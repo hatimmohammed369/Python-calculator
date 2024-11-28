@@ -14,13 +14,7 @@
 
 from enum import Enum
 from sys import argv
-
-input_file = open(argv[0], 'r')
-
-# Print input file
-for line in input_file.readlines():
-    print(line, end='')
-print()
+from re import compile
 
 
 class TokenType(Enum):
@@ -37,4 +31,30 @@ class Token:
         self.ttype = ttype
         self.value = value
 
+    def __repr__(self):
+        return f'Token(ttype={self.ttype}, value=\'{self.value}\')'
 
+
+# Scan input file lines to extract tokens
+NUMBERS_PATTERN = compile(r'(-)?\d+([.]\d+((e|E)(-|\+)?\d+)?)?')
+read_tokens: list[Token] = []
+
+for line in open(argv[1], 'r').readlines():
+    i = 0
+    while i < len(line):
+        if line[i] != ' ':
+            if m := NUMBERS_PATTERN.match(line, i):
+                read_tokens.append(Token(TokenType.NUMBER, m.group()))
+            elif line[i] == '+':
+                read_tokens.append(Token(TokenType.PLUS, '+'))
+            elif line[i] == '-':
+                read_tokens.append(Token(TokenType.MINUS, '-'))
+            elif line[i] == '*':
+                read_tokens.append(Token(TokenType.STAR, '*'))
+            elif line[i] == '/':
+                read_tokens.append(Token(TokenType.SLASH, '/'))
+            i += len(read_tokens[-1].value)
+        else:
+            i += 1
+
+print(read_tokens)
