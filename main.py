@@ -37,24 +37,47 @@ class Token:
 
 # Scan input file lines to extract tokens
 NUMBERS_PATTERN = compile(r'(-)?\d+([.]\d+((e|E)(-|\+)?\d+)?)?')
-read_tokens: list[Token] = []
 
-for line in open(argv[1], 'r').readlines():
-    i = 0
-    while i < len(line):
-        if line[i] != ' ':
-            if m := NUMBERS_PATTERN.match(line, i):
-                read_tokens.append(Token(TokenType.NUMBER, m.group()))
-            elif line[i] == '+':
-                read_tokens.append(Token(TokenType.PLUS, '+'))
-            elif line[i] == '-':
-                read_tokens.append(Token(TokenType.MINUS, '-'))
-            elif line[i] == '*':
-                read_tokens.append(Token(TokenType.STAR, '*'))
-            elif line[i] == '/':
-                read_tokens.append(Token(TokenType.SLASH, '/'))
-            i += len(read_tokens[-1].value)
-        else:
-            i += 1
 
-print(read_tokens)
+class Tokenizer:
+    def __init__(self):
+        self.input_lines = open(argv[1], 'r').readlines()
+        self.line = 0
+        self.pos = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.line < len(self.input_lines):
+            current_line = self.input_lines[self.line]
+
+            if self.pos >= len(current_line):
+                self.pos = 0
+                self.line += 1
+                current_line = self.input_lines[self.line]
+
+            while self.pos < len(current_line):
+                if current_line[self.pos] != ' ':
+                    read_token = None
+                    if m := NUMBERS_PATTERN.match(current_line, self.pos):
+                        read_token = Token(TokenType.NUMBER, m.group())
+                    elif current_line[self.pos] == '+':
+                        read_token = Token(TokenType.PLUS, '+')
+                    elif current_line[self.pos] == '-':
+                        read_token = Token(TokenType.MINUS, '-')
+                    elif current_line[self.pos] == '*':
+                        read_token = Token(TokenType.STAR, '*')
+                    elif current_line[self.pos] == '/':
+                        read_token = Token(TokenType.SLASH, '/')
+                    if read_token:
+                        self.pos += len(read_token.value)
+                        return read_token
+                    else:
+                        break
+                else:
+                    self.pos += 1
+        raise StopIteration
+
+
+print(list(Tokenizer()))
