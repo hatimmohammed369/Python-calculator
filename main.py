@@ -99,7 +99,7 @@ class Tokenizer:
 # Expression => Term ( ( '+' | '-' ) Term )?
 # Term => Exponential ( ( '*' | '/' ) Exponential )?
 # Exponential => Atomic ( '**' Atomic )?
-# Atomic => ( '-' )? ( NUMBER | '(' Expression ')' )
+# Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
 
 
 class ExpressionType(Enum):
@@ -184,26 +184,27 @@ class Exponential(ExpressionBase):
 
 
 class Atomic(ExpressionBase):
-    def __init__(self, is_negated, is_number, value):
+    def __init__(self, is_signed, is_number, value):
         super().__init__(ExpressionType.ATOMIC)
-        self.is_negated = is_negated
+        self.is_signed = is_signed
         self.is_number = is_number
         self.value: Token | ExpressionBase = value
 
-    # Atomic => ( '-' )? ( NUMBER | '(' Expression ')' )
+    # Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
     @override
     def evaluate(self) -> float:
-        sign = 1
-        if self.is_negated:
-            sign = -1
         if self.is_number:
-            return sign * float(self.value.value)
-        return sign * self.value.evaluate()
+            value = float(self.value.value)
+        else:
+            value = self.value.evaluate()
+            if self.is_signed:
+                value *= -1
+        return value
 
     @override
     def __repr__(self) -> str:
         sign = ''
-        if self.is_negated:
+        if self.is_signed:
             sign = '-'
         value = ''
         if self.is_number:
@@ -306,37 +307,47 @@ class Parser:
 
         return ParseResult(parsed_expression, error)
 
-    # Atomic => ( '-' )? ( NUMBER | '(' Expression ')' )
+    # Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
     def parse_atomic(self) -> ParseResult:
-        parsed_expression = None
-        error = None
-        is_negated = self.check(TokenType.MINUS)
-        if is_negated:
-            self.read_next_token()  # Skip -
-
         if self.check(TokenType.NUMBER):
             parsed_expression = Atomic(
-                is_negated,
+                is_signed=False,
                 is_number=True,
                 value=self.consume()
             )
-        elif self.check(TokenType.LEFT_PARENTHESIS):
-            self.read_next_token()  # Skip (
-            value = self.parse_expression()
-            if value.error:
-                error = value.error
-            elif value.parsed_expression:
-                if self.check(TokenType.RIGHT_PARENTHESIS):
-                    self.read_next_token()  # Skip )
-                    parsed_expression = Atomic(
-                        is_negated,
-                        False,
-                        value.parsed_expression
-                    )
+            error = None
+        else:
+            parsed_expression = None
+            error = None
+            is_signed = self.check(TokenType.MINUS)
+            if is_signed:
+                self.read_next_token()  # Skip -
+
+            if self.check(TokenType.LEFT_PARENTHESIS):
+                self.read_next_token()  # Skip (
+                value = self.parse_expression()
+                if value.error:
+                    error = value.error
+                elif value.parsed_expression:
+                    if self.check(TokenType.RIGHT_PARENTHESIS):
+                        self.read_next_token()  # Skip )
+                        parsed_expression = Atomic(
+                            is_signed,
+                            is_number=False,
+                            value=value.parsed_expression
+                        )
+                    else:
+                        error = 'Expected ) after expression'
                 else:
-                    error = 'Expected ) after expression'
+                    error = 'Expected expression after ('
             else:
-                error = 'Expected expression after ('
+                atom = self.parse_atomic()
+                if atom.error:
+                    error = atom.error
+                elif atom.parsed_expression:
+                    parsed_expression = atom.parsed_expression
+                elif is_signed:
+                    error = 'Expected expression after -'
 
         return ParseResult(parsed_expression, error)
 
