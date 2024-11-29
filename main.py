@@ -16,6 +16,7 @@
 from enum import Enum
 from sys import argv
 from re import compile
+from typing import override
 
 
 class TokenType(Enum):
@@ -98,23 +99,27 @@ print(list(Tokenizer()))
 
 # Context-Free Grammar
 # Expression => Term ( ( '+' | '-' )? Term )?
-# Term => Factor ( ( '*' | '/' ) Factor )?
-# Factor => ( '-' )? Exponential
+# Term => Exponential ( ( '*' | '/' ) Exponential )?
 # Exponential => Atomic ( '**' Atomic )?
-# Atomic => NUMBER | '(' Expression ')'
+# Atomic => ( '-' )? ( NUMBER | '(' Expression ')' )
 
 
 class ExpressionType(Enum):
     TOP_CLASS = 1
     TERM = 2
-    FACTOR = 3
-    EXPONENTIAL = 4
-    ATOMIC = 5
+    EXPONENTIAL = 3
+    ATOMIC = 4
 
 
 class ExpressionBase:
     def __init__(self, expression_type: ExpressionType):
         self.expression_type: ExpressionType = expression_type
+
+    def evaluate(self) -> float:
+        pass
+
+    def __repr__(self) -> str:
+        pass
 
 
 class Expression(ExpressionBase):
@@ -124,20 +129,38 @@ class Expression(ExpressionBase):
         self.operator: Token = op
         self.right_term: ExpressionBase = rhs
 
+    @override
+    def evaluate(self) -> float:
+        left = self.left_term.evaluate()
+        right = self.right_term.evaluate()
+        if self.operator.value == '+':
+            return left + right
+        return left - right
+
+    @override
+    def __repr__(self) -> str:
+        return f'{self.left_term} {self.operator.value} {self.right_term}'
+
 
 class Term(ExpressionBase):
     def __init__(self, lhs, op, rhs):
         super().__init__(ExpressionType.TERM)
-        self.left_factor: ExpressionBase = lhs
+        self.left_exponential: ExpressionBase = lhs
         self.operator: Token = op
-        self.right_factor: ExpressionBase = rhs
+        self.right_exponential: ExpressionBase = rhs
 
+    @override
+    def evaluate(self) -> float:
+        left = self.left_term.evaluate()
+        right = self.right_term.evaluate()
+        if self.operator.value == '*':
+            return left * right
+        return left / right
 
-class Factor(ExpressionBase):
-    def __init__(self, negated: bool, exponential):
-        super().__init__(ExpressionType.FACTOR)
-        self.negated: bool = negated
-        self.exponential: ExpressionBase = exponential
+    @override
+    def __repr__(self) -> str:
+        return f'{self.left_exponential} \
+            {self.operator.value} {self.right_exponential}'
 
 
 class Exponential(ExpressionBase):
@@ -146,9 +169,41 @@ class Exponential(ExpressionBase):
         self.base: ExpressionBase = base
         self.exponent: ExpressionBase = exponent
 
+    @override
+    def evaluate(self) -> float:
+        base = self.base.evaluate()
+        exponent = self.exponent.evaluate()
+        return base ** exponent
+
+    @override
+    def __repr__(self) -> str:
+        return f'{self.base} ** {self.exponent}'
+
 
 class Atomic(ExpressionBase):
-    def __init__(self, value):
+    def __init__(self, is_negated, value):
         super().__init__(ExpressionType.ATOMIC)
+        self.is_negated = is_negated
         self.is_number = (value is Token)
         self.value: Token | ExpressionBase = value
+
+    @override
+    def evaluate(self) -> float:
+        sign = 1
+        if self.is_negated:
+            sign = -1
+        if self.is_number:
+            return sign * float(self.value.value)
+        return sign * self.value.evaluate()
+
+    @override
+    def __repr__(self) -> str:
+        sign = ''
+        if self.is_negated:
+            sign = '-'
+        value = ''
+        if self.is_number:
+            value = self.value.value
+        else:
+            value = f'({self.value})'
+        return f'{sign}{value}'
