@@ -94,3 +94,11 @@ class Tokenizer:
 
 
 print(list(Tokenizer()))
+
+
+# Context-Free Grammar
+# Expression => Term ( ( '+' | '-' )? Term )?
+# Term => Factor ( ( '*' | '/' ) Factor )?
+# Factor => ( '-' )? Exponential
+# Exponential => Atomic ( '**' Atomic )?
+# Atomic => NUMBER | '(' Expression ')'
