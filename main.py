@@ -102,3 +102,53 @@ print(list(Tokenizer()))
 # Factor => ( '-' )? Exponential
 # Exponential => Atomic ( '**' Atomic )?
 # Atomic => NUMBER | '(' Expression ')'
+
+
+class ExpressionType(Enum):
+    TOP_CLASS = 1
+    TERM = 2
+    FACTOR = 3
+    EXPONENTIAL = 4
+    ATOMIC = 5
+
+
+class ExpressionBase:
+    def __init__(self, expression_type: ExpressionType):
+        self.expression_type: ExpressionType = expression_type
+
+
+class Expression(ExpressionBase):
+    def __init__(self, lhs, op, rhs):
+        super().__init__(ExpressionType.TOP_CLASS)
+        self.left_term: ExpressionBase = lhs
+        self.operator: Token = op
+        self.right_term: ExpressionBase = rhs
+
+
+class Term(ExpressionBase):
+    def __init__(self, lhs, op, rhs):
+        super().__init__(ExpressionType.TERM)
+        self.left_factor: ExpressionBase = lhs
+        self.operator: Token = op
+        self.right_factor: ExpressionBase = rhs
+
+
+class Factor(ExpressionBase):
+    def __init__(self, negated: bool, exponential):
+        super().__init__(ExpressionType.FACTOR)
+        self.negated: bool = negated
+        self.exponential: ExpressionBase = exponential
+
+
+class Exponential(ExpressionBase):
+    def __init__(self, base, exponent):
+        super().__init__(ExpressionType.EXPONENTIAL)
+        self.base: ExpressionBase = base
+        self.exponent: ExpressionBase = exponent
+
+
+class Atomic(ExpressionBase):
+    def __init__(self, value):
+        super().__init__(ExpressionType.ATOMIC)
+        self.is_number = (value is Token)
+        self.value: Token | ExpressionBase = value
