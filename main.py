@@ -14,7 +14,7 @@
 # + - * /
 
 from enum import Enum
-from sys import argv
+from sys import argv, stderr
 from re import compile
 from typing import override
 
@@ -94,11 +94,8 @@ class Tokenizer:
         raise StopIteration
 
 
-print(list(Tokenizer()))
-
-
 # Context-Free Grammar
-# Expression => Term ( ( '+' | '-' )? Term )?
+# Expression => Term ( ( '+' | '-' ) Term )?
 # Term => Exponential ( ( '*' | '/' ) Exponential )?
 # Exponential => Atomic ( '**' Atomic )?
 # Atomic => ( '-' )? ( NUMBER | '(' Expression ')' )
@@ -129,6 +126,7 @@ class Expression(ExpressionBase):
         self.operator: Token = op
         self.right_term: ExpressionBase = rhs
 
+    # Expression => Term ( ( '+' | '-' ) Term )?
     @override
     def evaluate(self) -> float:
         left = self.left_term.evaluate()
@@ -149,10 +147,11 @@ class Term(ExpressionBase):
         self.operator: Token = op
         self.right_exponential: ExpressionBase = rhs
 
+    # Term => Exponential ( ( '*' | '/' ) Exponential )?
     @override
     def evaluate(self) -> float:
-        left = self.left_term.evaluate()
-        right = self.right_term.evaluate()
+        left = self.left_exponential.evaluate()
+        right = self.right_exponential.evaluate()
         if self.operator.value == '*':
             return left * right
         return left / right
@@ -169,6 +168,7 @@ class Exponential(ExpressionBase):
         self.base: ExpressionBase = base
         self.exponent: ExpressionBase = exponent
 
+    # Exponential => Atomic ( '**' Atomic )?
     @override
     def evaluate(self) -> float:
         base = self.base.evaluate()
@@ -181,12 +181,13 @@ class Exponential(ExpressionBase):
 
 
 class Atomic(ExpressionBase):
-    def __init__(self, is_negated, value):
+    def __init__(self, is_negated, is_number, value):
         super().__init__(ExpressionType.ATOMIC)
         self.is_negated = is_negated
-        self.is_number = (value is Token)
+        self.is_number = is_number
         self.value: Token | ExpressionBase = value
 
+    # Atomic => ( '-' )? ( NUMBER | '(' Expression ')' )
     @override
     def evaluate(self) -> float:
         sign = 1
@@ -207,3 +208,97 @@ class Atomic(ExpressionBase):
         else:
             value = f'({self.value})'
         return f'{sign}{value}'
+
+
+class Parser:
+    def __init__(self):
+        self.tokenizer = Tokenizer()
+        self.read_next_token()
+
+    # Expression => Term ( ( '+' | '-' ) Term )?
+    def parse_expression(self) -> ExpressionBase:
+        if left_term := self.parse_term():
+            if self.check(TokenType.PLUS) or self.check(TokenType.MINUS):
+                operator = self.consume()
+                if right_term := self.parse_term():
+                    return Expression(
+                        lhs=left_term,
+                        op=operator,
+                        rhs=right_term
+                    )
+                else:
+                    print('Expected expression after ' +
+                          operator.value, file=stderr)
+            else:
+                return left_term
+        return None
+
+    # Term => Exponential ( ( '*' | '/' ) Exponential )?
+    def parse_term(self) -> ExpressionBase:
+        if left_exponential := self.parse_exponential():
+            if self.check(TokenType.STAR) or self.check(TokenType.SLASH):
+                operator = self.consume()
+                if right_exponential := self.parse_exponential():
+                    return Term(
+                        lhs=left_exponential,
+                        op=operator,
+                        rhs=right_exponential
+                    )
+                else:
+                    print('Expected expression after ' +
+                          operator.value, file=stderr)
+            else:
+                return left_exponential
+        return None
+
+    # Exponential => Atomic ( '**' Atomic )?
+    def parse_exponential(self) -> ExpressionBase:
+        if base := self.parse_atomic():
+            if self.check(TokenType.EXPONENT):
+                self.read_next_token()
+                if exponent := self.parse_atomic():
+                    return Exponential(base, exponent)
+                else:
+                    print('Expected expression after **', file=stderr)
+            else:
+                return base
+        return None
+
+    # Atomic => ( '-' )? ( NUMBER | '(' Expression ')' )
+    def parse_atomic(self) -> ExpressionBase:
+        is_negated = self.check(TokenType.MINUS)
+        if is_negated:
+            self.read_next_token()
+        if self.check(TokenType.NUMBER):
+            if value := self.consume():
+                return Atomic(is_negated, True, value)
+            else:
+                print('Expected expression after -', file=stderr)
+        elif self.check(TokenType.LEFT_PARENTHESIS):
+            self.read_next_token()
+            if value := self.parse_expression():
+                if self.check(TokenType.RIGHT_PARENTHESIS):
+                    self.read_next_token()
+                    return Atomic(is_negated, False, value)
+                else:
+                    print('Expected ) after expression', file=stderr)
+            else:
+                print('Expected expression after (', file=stderr)
+        return None
+
+    def consume(self):
+        copy = self.current
+        self.read_next_token()
+        return copy
+
+    def check(self, ttype: TokenType) -> bool:
+        return self.current and self.current.ttype == ttype
+
+    def read_next_token(self):
+        try:
+            self.current: Token = next(self.tokenizer)
+        except StopIteration:
+            self.current: Token = None
+
+
+print(Parser().parse_expression().evaluate())
