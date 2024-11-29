@@ -102,17 +102,7 @@ class Tokenizer:
 # Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
 
 
-class ExpressionType(Enum):
-    TOP_CLASS = 1
-    TERM = 2
-    EXPONENTIAL = 3
-    ATOMIC = 4
-
-
 class ExpressionBase(ABC):
-    def __init__(self, expression_type: ExpressionType):
-        self.expression_type: ExpressionType = expression_type
-
     @abstractmethod
     def evaluate(self) -> float:
         pass
@@ -124,7 +114,6 @@ class ExpressionBase(ABC):
 
 class Expression(ExpressionBase):
     def __init__(self, lhs, op, rhs):
-        super().__init__(ExpressionType.TOP_CLASS)
         self.left_term: ExpressionBase = lhs
         self.operator: Token = op
         self.right_term: ExpressionBase = rhs
@@ -145,7 +134,6 @@ class Expression(ExpressionBase):
 
 class Term(ExpressionBase):
     def __init__(self, lhs, op, rhs):
-        super().__init__(ExpressionType.TERM)
         self.left_exponential: ExpressionBase = lhs
         self.operator: Token = op
         self.right_exponential: ExpressionBase = rhs
@@ -167,7 +155,6 @@ class Term(ExpressionBase):
 
 class Exponential(ExpressionBase):
     def __init__(self, base, exponent):
-        super().__init__(ExpressionType.EXPONENTIAL)
         self.base: ExpressionBase = base
         self.exponent: ExpressionBase = exponent
 
@@ -185,7 +172,6 @@ class Exponential(ExpressionBase):
 
 class Atomic(ExpressionBase):
     def __init__(self, is_signed, is_number, value):
-        super().__init__(ExpressionType.ATOMIC)
         self.is_signed = is_signed
         self.is_number = is_number
         self.value: Token | ExpressionBase = value
