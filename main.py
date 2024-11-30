@@ -49,7 +49,6 @@ class Tokenizer:
     def __init__(self):
         self.input_lines: list[str] = open(argv[1], 'r').readlines()
         self.line: int = 0
-        self.pos: int = 0
         self.col: int = 0
 
     def __iter__(self):
@@ -59,36 +58,35 @@ class Tokenizer:
         if self.line < len(self.input_lines):
             current_line = self.input_lines[self.line]
 
-            if self.pos >= len(current_line):
+            if self.col >= len(current_line):
                 self.col = 0
-                self.pos = 0
                 self.line += 1
                 current_line = self.input_lines[self.line]
 
-            while self.pos < len(current_line):
-                if current_line[self.pos] != ' ':
+            while self.col < len(current_line):
+                if current_line[self.col] != ' ':
                     read_token = None
-                    if m := NUMBERS_PATTERN.match(current_line, self.pos):
+                    if m := NUMBERS_PATTERN.match(current_line, self.col):
                         read_token = Token(
                             ttype=TokenType.NUMBER,
                             value=m.group(),
                             col=self.col
                         )
-                    elif current_line[self.pos] == '+':
+                    elif current_line[self.col] == '+':
                         read_token = Token(
                             ttype=TokenType.PLUS,
                             value='+',
                             col=self.col
                         )
-                    elif current_line[self.pos] == '-':
+                    elif current_line[self.col] == '-':
                         read_token = Token(
                             ttype=TokenType.MINUS,
                             value='-',
                             col=self.col
                         )
-                    elif current_line[self.pos] == '*':
-                        if self.pos+1 < len(current_line) and \
-                                current_line[self.pos+1] == '*':
+                    elif current_line[self.col] == '*':
+                        if self.col+1 < len(current_line) and \
+                                current_line[self.col+1] == '*':
                             read_token = Token(
                                 ttype=TokenType.EXPONENT,
                                 value='**',
@@ -100,19 +98,19 @@ class Tokenizer:
                                 value='*',
                                 col=self.col
                             )
-                    elif current_line[self.pos] == '/':
+                    elif current_line[self.col] == '/':
                         read_token = Token(
                             ttype=TokenType.SLASH,
                             value='/',
                             col=self.col
                         )
-                    elif current_line[self.pos] == '(':
+                    elif current_line[self.col] == '(':
                         read_token = Token(
                             ttype=TokenType.LEFT_PARENTHESIS,
                             value='(',
                             col=self.col
                         )
-                    elif current_line[self.pos] == ')':
+                    elif current_line[self.col] == ')':
                         read_token = Token(
                             ttype=TokenType.RIGHT_PARENTHESIS,
                             value=')',
@@ -120,13 +118,11 @@ class Tokenizer:
                         )
 
                     if read_token:
-                        self.pos += len(read_token.value)
                         self.col += len(read_token.value)
                         return read_token
                     else:
                         break
                 else:
-                    self.pos += 1
                     self.col += 1
         raise StopIteration
 
