@@ -9,10 +9,6 @@
 # 4 - Implement variables
 # 5 - Implement function calls
 
-# Tokens:
-# Numbers
-# + - * /
-
 from enum import Enum
 from sys import argv, stderr
 from re import compile
@@ -173,9 +169,10 @@ class Exponential(ExpressionBase):
 
 
 class Atomic(ExpressionBase):
-    def __init__(self, is_signed, is_number, value):
+    def __init__(self, is_signed, is_number, is_grouped, value):
         self.is_signed = is_signed
         self.is_number = is_number
+        self.is_grouped = is_grouped
         self.value: Token | ExpressionBase = value
 
     # Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
@@ -191,15 +188,14 @@ class Atomic(ExpressionBase):
 
     @override
     def __repr__(self) -> str:
-        sign = ''
-        if self.is_signed:
-            sign = '-'
-        value = ''
         if self.is_number:
-            value = self.value.value
-        else:
-            value = f'({self.value})'
-        return f'{sign}{value}'
+            return self.value.value
+        value = f'{self.value}'
+        if self.is_grouped:
+            value = f'({value})'
+        if self.is_signed:
+            value = f'-{value}'
+        return value
 
 
 class ParseResult:
@@ -298,6 +294,7 @@ class Parser:
             parsed_expression = Atomic(
                 is_signed=False,
                 is_number=True,
+                is_grouped=False,
                 value=self.consume()
             )
             error = None
@@ -319,6 +316,7 @@ class Parser:
                         parsed_expression = Atomic(
                             is_signed,
                             is_number=False,
+                            is_grouped=True,
                             value=value.parsed_expression
                         )
                     else:
@@ -333,6 +331,7 @@ class Parser:
                     parsed_expression = Atomic(
                         is_signed,
                         is_number=False,
+                        is_grouped=False,
                         value=atom.parsed_expression,
                     )
                 elif is_signed:
