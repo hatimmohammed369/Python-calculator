@@ -95,7 +95,7 @@ class Tokenizer:
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' ) Exponential )*
 # Exponential => Atomic ( '**' Atomic )?
-# Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
+# Atomic => NUMBER | '(' Expression ')' | '-' Atomic
 
 
 class ExpressionBase(ABC):
@@ -175,7 +175,7 @@ class Atomic(ExpressionBase):
         self.is_grouped = is_grouped
         self.value: Token | ExpressionBase = value
 
-    # Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
+    # Atomic => NUMBER | '(' Expression ')' | '-' Atomic
     @override
     def evaluate(self) -> float:
         if self.is_number:
@@ -216,7 +216,7 @@ class Parser:
         del initial
 
         if parsed_expression:
-            while self.check(TokenType.PLUS) or self.check(TokenType.MINUS):
+            while self.check(TokenType.PLUS, TokenType.MINUS):
                 operator = self.consume()  # Get operator
                 right_term = self.parse_term()
 
@@ -234,6 +234,9 @@ class Parser:
                     error = 'Expected expression after ' + operator.value
                     parsed_expression = None
                     break
+            if parsed_expression and self.current:
+                parsed_expression = None
+                error = f'Unexpected {self.current.value}'
 
         return ParseResult(parsed_expression, error)
 
@@ -244,7 +247,7 @@ class Parser:
         del initial
 
         if parsed_expression:
-            while self.check(TokenType.STAR) or self.check(TokenType.SLASH):
+            while self.check(TokenType.STAR, TokenType.SLASH):
                 operator = self.consume()  # Get operator
                 right_exponential = self.parse_exponential()
 
@@ -288,8 +291,10 @@ class Parser:
 
         return ParseResult(parsed_expression, error)
 
-    # Atomic => NUMBER | ( '-' )? ( Atomic | '(' Expression ')' )
+    # Atomic => NUMBER | '(' Expression ')' | '-' Atomic
     def parse_atomic(self) -> ParseResult:
+        parsed_expression = None
+        error = None
         if self.check(TokenType.NUMBER):
             parsed_expression = Atomic(
                 is_signed=False,
@@ -297,45 +302,38 @@ class Parser:
                 is_grouped=False,
                 value=self.consume()
             )
-            error = None
-        else:
-            parsed_expression = None
-            error = None
-            is_signed = self.check(TokenType.MINUS)
-            if is_signed:
-                self.read_next_token()  # Skip -
-
-            if self.check(TokenType.LEFT_PARENTHESIS):
-                self.read_next_token()  # Skip (
-                value = self.parse_expression()
-                if value.error:
-                    error = value.error
-                elif value.parsed_expression:
-                    if self.check(TokenType.RIGHT_PARENTHESIS):
-                        self.read_next_token()  # Skip )
-                        parsed_expression = Atomic(
-                            is_signed,
-                            is_number=False,
-                            is_grouped=True,
-                            value=value.parsed_expression
-                        )
-                    else:
-                        error = 'Expected ) after expression'
-                else:
-                    error = 'Expected expression after ('
-            else:
-                atom = self.parse_atomic()
-                if atom.error:
-                    error = atom.error
-                elif atom.parsed_expression:
+        elif self.check(TokenType.LEFT_PARENTHESIS):
+            self.read_next_token()  # Skip (
+            grouped_expression = self.parse_expression()
+            if grouped_expression.error:
+                error = grouped_expression.error
+            elif grouped_expression.parsed_expression:
+                if self.check(TokenType.RIGHT_PARENTHESIS):
+                    self.read_next_token()  # Skip )
                     parsed_expression = Atomic(
-                        is_signed,
+                        is_signed=False,
                         is_number=False,
-                        is_grouped=False,
-                        value=atom.parsed_expression,
+                        is_grouped=True,
+                        value=grouped_expression.parsed_expression
                     )
-                elif is_signed:
-                    error = 'Expected expression after -'
+                else:
+                    error = 'Expected ) after expression'
+            else:
+                error = 'Expected expression after ('
+        elif self.check(TokenType.MINUS):
+            self.read_next_token()  # Skip -
+            atomic = self.parse_atomic()
+            if atomic.error:
+                error = atomic.error
+            elif atomic.parsed_expression:
+                parsed_expression = Atomic(
+                    is_signed=True,
+                    is_number=False,
+                    is_grouped=False,
+                    value=grouped_expression.parsed_expression
+                )
+            else:
+                error = 'Expected expression after -'
 
         return ParseResult(parsed_expression, error)
 
@@ -344,8 +342,12 @@ class Parser:
         self.read_next_token()
         return copy
 
-    def check(self, ttype: TokenType) -> bool:
-        return self.current and self.current.ttype == ttype
+    def check(self, *ttype: TokenType) -> bool:
+        if self.current:
+            for t in ttype:
+                if self.current.ttype == t:
+                    return True
+        return False
 
     def read_next_token(self):
         try:
