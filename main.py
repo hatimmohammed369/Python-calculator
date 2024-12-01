@@ -45,6 +45,9 @@ class Tokenizer:
         self.col: int = 0
         self.skip_end_of_line: bool = False
 
+    def get_current_line(self):
+        return self.input_lines[self.line]
+
     def has_more_lines(self):
         return self.line + 1 < len(self.input_lines)
 
@@ -55,13 +58,13 @@ class Tokenizer:
         if self.line >= len(self.input_lines):
             raise StopIteration
 
-        current_line = self.input_lines[self.line]
+        current_line = self.get_current_line()
         if self.col >= len(current_line):
             if self.has_more_lines():
                 self.line += 1
                 self.col = 0
                 self.skip_end_of_line = False
-                current_line = self.input_lines[self.line]
+                current_line = self.get_current_line()
             else:
                 raise StopIteration
 
@@ -86,7 +89,7 @@ class Tokenizer:
                         self.line += 1
                         self.col = 0
                         self.skip_end_of_line = False
-                        current_line = self.input_lines[self.line]
+                        current_line = self.get_current_line()
                         continue
                     else:
                         raise StopIteration
@@ -94,7 +97,7 @@ class Tokenizer:
                 all_whitespaces = True
                 rest = current_line[self.col+1:-1]
                 for c in rest:
-                    if c != ' ':
+                    if not c.isspace():
                         all_whitespaces = False
                         break
                     else:
@@ -105,7 +108,7 @@ class Tokenizer:
                         self.col += 1
                 else:
                     raise StopIteration
-            elif current_line[self.col] != ' ':
+            elif not current_line[self.col].isspace():
                 read_token = None
                 if m := NUMBERS_PATTERN.match(current_line, self.col):
                     read_token = Token(
@@ -285,6 +288,31 @@ class Parser:
         self.tokenizer = Tokenizer()
         self.read_next_token()
 
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.current:
+            result = self.parse_expression()
+            error, parsed_expression = result.error, result.parsed_expression
+            del result
+            if error and parsed_expression:
+                raise Exception("Error & parsed expression")
+            elif error:
+                parsed_expression = None
+            else:
+                if self.current and not self.check(TokenType.END_OF_LINE):
+                    parsed_expression = None
+                    error = self.tokenizer.get_current_line()
+                    error += (' ' * self.current.col) + \
+                        ('^' * len(self.current.value)) + '\n'
+                    error += 'Unexpected item'
+                elif self.check(TokenType.END_OF_LINE):
+                    self.read_next_token()  # Skip end of line
+            return ParseResult(parsed_expression, error)
+        else:
+            raise StopIteration
+
     # Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
     def parse_expression(self) -> ParseResult:
         initial = self.parse_term()
@@ -308,28 +336,13 @@ class Parser:
                     )
                 else:
                     parsed_expression = None
-                    current_line = self.tokenizer.input_lines[
-                        self.tokenizer.line
-                    ]
-                    col = len(current_line) - 1
-                    if self.current:
-                        col = self.current.col
+                    current_line = self.tokenizer.get_current_line()
+                    col = operator.col + 1
                     error = current_line[0:col] + \
                         ' ' + current_line[col:]
                     error += (' ' * col) + '^\n'
                     error += f'Expected expression after {operator.value}'
                     break
-            if parsed_expression:
-                if self.current and not self.check(TokenType.END_OF_LINE):
-                    parsed_expression = None
-                    error = self.tokenizer.input_lines[
-                        self.tokenizer.line
-                    ]
-                    error += (' ' * self.current.col) + \
-                        ('^' * len(self.current.value)) + '\n'
-                    error += 'Unexpected item'
-                elif self.check(TokenType.END_OF_LINE):
-                    self.read_next_token()  # Skip end of line
 
         return ParseResult(parsed_expression, error)
 
@@ -356,12 +369,8 @@ class Parser:
                     )
                 else:
                     parsed_expression = None
-                    current_line = self.tokenizer.input_lines[
-                        self.tokenizer.line
-                    ]
-                    col = len(current_line) - 1
-                    if self.current:
-                        col = self.current.col
+                    current_line = self.tokenizer.get_current_line()
+                    col = operator.col + 1
                     error = current_line[0:col] + \
                         ' ' + current_line[col:]
                     error += (' ' * col) + '^\n'
@@ -377,11 +386,12 @@ class Parser:
         del initial
 
         if parsed_expression and self.check(TokenType.EXPONENT):
+            col = self.current.col + 2
             self.read_next_token()  # Skip **
             exponent = self.parse_atomic()
             if exponent.error:
-                error = exponent.error
                 parsed_expression = None
+                error = exponent.error
             elif exponent.parsed_expression:
                 parsed_expression = Exponential(
                     base=parsed_expression,
@@ -389,12 +399,7 @@ class Parser:
                 )
             else:
                 parsed_expression = None
-                current_line = self.tokenizer.input_lines[
-                    self.tokenizer.line
-                ]
-                col = len(current_line) - 1
-                if self.current:
-                    col = self.current.col
+                current_line = self.tokenizer.get_current_line()
                 error = current_line[0:col] + \
                     ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
@@ -428,9 +433,7 @@ class Parser:
                         value=grouped_expression.parsed_expression
                     )
                 else:
-                    current_line = self.tokenizer.input_lines[
-                        self.tokenizer.line
-                    ]
+                    current_line = self.tokenizer.get_current_line()
                     col = len(current_line) - 1
                     if self.current:
                         col = self.current.col
@@ -439,9 +442,7 @@ class Parser:
                     error += (' ' * col) + '^\n'
                     error += 'Expected ) after expression'
             else:
-                current_line = self.tokenizer.input_lines[
-                    self.tokenizer.line
-                ]
+                current_line = self.tokenizer.get_current_line()
                 col = len(current_line) - 1
                 if self.current:
                     col = self.current.col
@@ -462,9 +463,7 @@ class Parser:
                     value=grouped_expression.parsed_expression
                 )
             else:
-                current_line = self.tokenizer.input_lines[
-                    self.tokenizer.line
-                ]
+                current_line = self.tokenizer.get_current_line()
                 col = len(current_line) - 1
                 if self.current:
                     col = self.current.col
@@ -477,8 +476,7 @@ class Parser:
                 current_line =\
                     self.tokenizer.input_lines[self.tokenizer.line-1]
             else:
-                current_line =\
-                    self.tokenizer.input_lines[self.tokenizer.line]
+                current_line = self.tokenizer.get_current_line()
             end = len(current_line) - 1
             for k in range(end, -1, -1):
                 if not current_line[k].isspace():
@@ -509,9 +507,7 @@ class Parser:
             self.current: Token = None
 
 
-parser = Parser()
-while True:
-    parse_result: ParseResult = parser.parse_expression()
+for parse_result in Parser():
     error, parsed_expression =\
         parse_result.error, parse_result.parsed_expression
     del parse_result
@@ -525,5 +521,3 @@ while True:
             sep='\n'
         )
         print()
-    else:
-        break
