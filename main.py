@@ -1,14 +1,6 @@
 # How to run:
 # python main.py path_to_input_file
 
-# 1 - Implement basic arithmetic
-# + - * / ** -(Expression)
-# 2 - Implement nested expressions
-# 3 - Implement multi-lined processing
-# (\n to end expression, \ to continue expression in next line)
-# 4 - Implement variables
-# 5 - Implement function calls
-
 from enum import Enum
 from sys import argv, stderr
 from re import compile
@@ -25,6 +17,7 @@ class TokenType(Enum):
     EXPONENT = 6
     LEFT_PARENTHESIS = 7
     RIGHT_PARENTHESIS = 8
+    END_OF_LINE = 9
 
 
 class Token:
@@ -50,85 +43,132 @@ class Tokenizer:
         self.input_lines: list[str] = open(argv[1], 'r').readlines()
         self.line: int = 0
         self.col: int = 0
+        self.skip_end_of_line: bool = False
+
+    def has_more_lines(self):
+        return self.line + 1 < len(self.input_lines)
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        if self.line < len(self.input_lines):
-            current_line = self.input_lines[self.line]
+        if self.line >= len(self.input_lines):
+            raise StopIteration
 
-            if self.col >= len(current_line):
-                self.col = 0
+        current_line = self.input_lines[self.line]
+        if self.col >= len(current_line):
+            if self.has_more_lines():
                 self.line += 1
+                self.col = 0
+                self.skip_end_of_line = False
                 current_line = self.input_lines[self.line]
+            else:
+                raise StopIteration
 
-            while self.col < len(current_line):
-                if current_line[self.col] != ' ':
-                    read_token = None
-                    if m := NUMBERS_PATTERN.match(current_line, self.col):
-                        read_token = Token(
-                            ttype=TokenType.NUMBER,
-                            value=m.group(),
-                            col=self.col
-                        )
-                    elif current_line[self.col] == '+':
-                        read_token = Token(
-                            ttype=TokenType.PLUS,
-                            value='+',
-                            col=self.col
-                        )
-                    elif current_line[self.col] == '-':
-                        read_token = Token(
-                            ttype=TokenType.MINUS,
-                            value='-',
-                            col=self.col
-                        )
-                    elif current_line[self.col] == '*':
-                        if self.col+1 < len(current_line) and \
-                                current_line[self.col+1] == '*':
-                            read_token = Token(
-                                ttype=TokenType.EXPONENT,
-                                value='**',
-                                col=self.col
-                            )
-                        else:
-                            read_token = Token(
-                                ttype=TokenType.STAR,
-                                value='*',
-                                col=self.col
-                            )
-                    elif current_line[self.col] == '/':
-                        read_token = Token(
-                            ttype=TokenType.SLASH,
-                            value='/',
-                            col=self.col
-                        )
-                    elif current_line[self.col] == '(':
-                        read_token = Token(
-                            ttype=TokenType.LEFT_PARENTHESIS,
-                            value='(',
-                            col=self.col
-                        )
-                    elif current_line[self.col] == ')':
-                        read_token = Token(
-                            ttype=TokenType.RIGHT_PARENTHESIS,
-                            value=')',
-                            col=self.col
-                        )
-
-                    if read_token:
-                        self.col += len(read_token.value)
-                        return read_token
+        while self.col < len(current_line):
+            if current_line[self.col] == '\n':
+                if not self.skip_end_of_line:
+                    read_token = Token(
+                        ttype=TokenType.END_OF_LINE,
+                        value='\\n',
+                        col=self.col
+                    )
+                    if self.has_more_lines():
+                        self.line += 1
+                        self.col = 0
+                        self.skip_end_of_line = False
                     else:
-                        break
+                        self.col += 1
+                    return read_token
                 else:
-                    self.col += 1
-        raise StopIteration
+                    # Jump to next line
+                    if self.has_more_lines():
+                        self.line += 1
+                        self.col = 0
+                        self.skip_end_of_line = False
+                        current_line = self.input_lines[self.line]
+                        continue
+                    else:
+                        raise StopIteration
+            elif current_line[self.col] == '\\':
+                all_whitespaces = True
+                rest = current_line[self.col+1:-1]
+                for c in rest:
+                    if c != ' ':
+                        all_whitespaces = False
+                        break
+                    else:
+                        self.col += 1
+                if all_whitespaces:
+                    self.skip_end_of_line = True
+                    if len(rest) == 0:
+                        self.col += 1
+                else:
+                    raise StopIteration
+            elif current_line[self.col] != ' ':
+                read_token = None
+                if m := NUMBERS_PATTERN.match(current_line, self.col):
+                    read_token = Token(
+                        ttype=TokenType.NUMBER,
+                        value=m.group(),
+                        col=self.col
+                    )
+                elif current_line[self.col] == '+':
+                    read_token = Token(
+                        ttype=TokenType.PLUS,
+                        value='+',
+                        col=self.col
+                    )
+                elif current_line[self.col] == '-':
+                    read_token = Token(
+                        ttype=TokenType.MINUS,
+                        value='-',
+                        col=self.col
+                    )
+                elif current_line[self.col] == '*':
+                    if self.col+1 < len(current_line) and \
+                            current_line[self.col+1] == '*':
+                        read_token = Token(
+                            ttype=TokenType.EXPONENT,
+                            value='**',
+                            col=self.col
+                        )
+                    else:
+                        read_token = Token(
+                            ttype=TokenType.STAR,
+                            value='*',
+                            col=self.col
+                        )
+                elif current_line[self.col] == '/':
+                    read_token = Token(
+                        ttype=TokenType.SLASH,
+                        value='/',
+                        col=self.col
+                    )
+                elif current_line[self.col] == '(':
+                    read_token = Token(
+                        ttype=TokenType.LEFT_PARENTHESIS,
+                        value='(',
+                        col=self.col
+                    )
+                elif current_line[self.col] == ')':
+                    read_token = Token(
+                        ttype=TokenType.RIGHT_PARENTHESIS,
+                        value=')',
+                        col=self.col
+                    )
+
+                if read_token:
+                    self.col += len(read_token.value)
+                    return read_token
+                else:
+                    raise StopIteration
+            else:
+                self.col += 1
 
 
 # Context-Free Grammar
-# Expression => Term ( ( '+' | '-' ) Term )*
+# Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
 # Term => Exponential ( ( '*' | '/' ) Exponential )*
 # Exponential => Atomic ( '**' Atomic )?
 # Atomic => NUMBER | '(' Expression ')' | '-' Atomic
@@ -150,7 +190,7 @@ class Expression(ExpressionBase):
         self.operator: Token = op
         self.right_term: ExpressionBase = rhs
 
-    # Expression => Term ( ( '+' | '-' ) Term )*
+    # Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
     @override
     def evaluate(self) -> float:
         left = self.left_term.evaluate()
@@ -245,7 +285,7 @@ class Parser:
         self.tokenizer = Tokenizer()
         self.read_next_token()
 
-    # Expression => Term ( ( '+' | '-' ) Term )*
+    # Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
     def parse_expression(self) -> ParseResult:
         initial = self.parse_term()
         error, parsed_expression = initial.error, initial.parsed_expression
@@ -279,14 +319,17 @@ class Parser:
                     error += (' ' * col) + '^\n'
                     error += f'Expected expression after {operator.value}'
                     break
-            if parsed_expression and self.current:
-                parsed_expression = None
-                error = self.tokenizer.input_lines[
-                    self.tokenizer.line
-                ]
-                col = self.current.col
-                error += (' ' * col) + ('^' * len(self.current.value)) + '\n'
-                error += 'Unexpected item'
+            if parsed_expression:
+                if self.current and not self.check(TokenType.END_OF_LINE):
+                    parsed_expression = None
+                    error = self.tokenizer.input_lines[
+                        self.tokenizer.line
+                    ]
+                    error += (' ' * self.current.col) + \
+                        ('^' * len(self.current.value)) + '\n'
+                    error += 'Unexpected item'
+                elif self.check(TokenType.END_OF_LINE):
+                    self.read_next_token()  # Skip end of line
 
         return ParseResult(parsed_expression, error)
 
@@ -429,6 +472,21 @@ class Parser:
                     ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
                 error += 'Expected expression'
+        elif self.check(TokenType.END_OF_LINE):
+            if self.tokenizer.col == 0:
+                current_line =\
+                    self.tokenizer.input_lines[self.tokenizer.line-1]
+            else:
+                current_line =\
+                    self.tokenizer.input_lines[self.tokenizer.line]
+            end = len(current_line) - 1
+            for k in range(end, -1, -1):
+                if not current_line[k].isspace():
+                    end = k
+                    break
+            error = current_line[:end+1] + '\n'
+            error += (' ' * (end + 1)) + '^\n'
+            error += 'Unexpected end of line'
 
         return ParseResult(parsed_expression, error)
 
@@ -451,11 +509,21 @@ class Parser:
             self.current: Token = None
 
 
-parse_result: ParseResult = Parser().parse_expression()
-error, parsed_expression = parse_result.error, parse_result.parsed_expression
-del parse_result
-if error:
-    print(error, file=stderr)
-else:
-    print(parsed_expression)
-    print(parsed_expression.evaluate())
+parser = Parser()
+while True:
+    parse_result: ParseResult = parser.parse_expression()
+    error, parsed_expression =\
+        parse_result.error, parse_result.parsed_expression
+    del parse_result
+    if error:
+        print(error, file=stderr)
+        break
+    elif parsed_expression:
+        print(
+            parsed_expression,
+            parsed_expression.evaluate(),
+            sep='\n'
+        )
+        print()
+    else:
+        break
