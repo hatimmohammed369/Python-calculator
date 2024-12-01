@@ -55,18 +55,18 @@ class Tokenizer:
         return self
 
     def __next__(self):
-        if self.line >= len(self.input_lines):
-            raise StopIteration
-
         current_line = self.get_current_line()
         if self.col >= len(current_line):
-            if self.has_more_lines():
+            while True:
                 self.line += 1
                 self.col = 0
                 self.skip_end_of_line = False
-                current_line = self.get_current_line()
-            else:
-                raise StopIteration
+                if self.line >= len(self.input_lines):
+                    raise StopIteration
+                else:
+                    current_line = self.get_current_line()
+                    if not current_line.isspace():
+                        break
 
         while self.col < len(current_line):
             if current_line[self.col] == '\n':
@@ -76,23 +76,21 @@ class Tokenizer:
                         value='\\n',
                         col=self.col
                     )
-                    if self.has_more_lines():
-                        self.line += 1
-                        self.col = 0
-                        self.skip_end_of_line = False
-                    else:
-                        self.col += 1
+                    self.col += 1
                     return read_token
                 else:
-                    # Jump to next line
-                    if self.has_more_lines():
+                    # Jump to next non-empty line
+                    while True:
                         self.line += 1
                         self.col = 0
                         self.skip_end_of_line = False
-                        current_line = self.get_current_line()
-                        continue
-                    else:
-                        raise StopIteration
+                        if self.line >= len(self.input_lines):
+                            raise StopIteration
+                        else:
+                            current_line = self.get_current_line()
+                            if not current_line.isspace():
+                                break
+                    continue
             elif current_line[self.col] == '\\':
                 all_whitespaces = True
                 rest = current_line[self.col+1:-1]
@@ -460,7 +458,7 @@ class Parser:
                     is_signed=True,
                     is_number=False,
                     is_grouped=False,
-                    value=grouped_expression.parsed_expression
+                    value=atomic.parsed_expression
                 )
             else:
                 current_line = self.tokenizer.get_current_line()
@@ -484,7 +482,7 @@ class Parser:
                     break
             error = current_line[:end+1] + '\n'
             error += (' ' * (end + 1)) + '^\n'
-            error += 'Unexpected end of line'
+            error += f'Unexpected end of line {self.tokenizer.line}'
 
         return ParseResult(parsed_expression, error)
 
