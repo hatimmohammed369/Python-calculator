@@ -18,6 +18,8 @@ class TokenType(Enum):
     LEFT_PARENTHESIS = 7
     RIGHT_PARENTHESIS = 8
     END_OF_LINE = 9
+    EQUAL = 10
+    NAME = 11
 
 
 class Token:
@@ -36,6 +38,7 @@ class Token:
 
 # Scan input file lines to extract tokens
 NUMBERS_PATTERN = compile(r'(-)?\d+([.]\d+((e|E)(-|\+)?\d+)?)?')
+NAMES_PATTERN = compile(r'[a-zA-Z_]+\w*')
 
 
 class Tokenizer:
@@ -114,6 +117,12 @@ class Tokenizer:
                         value=m.group(),
                         col=self.col
                     )
+                elif m := NAMES_PATTERN.match(current_line, self.col):
+                    read_token = Token(
+                        ttype=TokenType.NAME,
+                        value=m.group(),
+                        col=self.col
+                    )
                 elif current_line[self.col] == '+':
                     read_token = Token(
                         ttype=TokenType.PLUS,
@@ -158,6 +167,12 @@ class Tokenizer:
                         value=')',
                         col=self.col
                     )
+                elif current_line[self.col] == '=':
+                    read_token = Token(
+                        ttype=TokenType.EQUAL,
+                        value='=',
+                        col=self.col
+                    )
 
                 if read_token:
                     self.col += len(read_token.value)
@@ -169,10 +184,14 @@ class Tokenizer:
 
 
 # Context-Free Grammar
+# Statement => ( NAME '=' )? Expression
 # Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
 # Term => Exponential ( ( '*' | '/' ) Exponential )*
 # Exponential => Atomic ( '**' Atomic )?
-# Atomic => NUMBER | '(' Expression ')' | '-' Atomic
+# Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
+
+
+variables: dict[str, float] = {}
 
 
 class ExpressionBase(ABC):
@@ -183,6 +202,27 @@ class ExpressionBase(ABC):
     @abstractmethod
     def __repr__(self) -> str:
         pass
+
+
+class Statement(ExpressionBase):
+    def __init__(self, name: str, expression: ExpressionBase):
+        self.name: str = name
+        self.expression: ExpressionBase = expression
+
+    # Statement => ( NAME '=' )? Expression
+    @override
+    def evaluate(self) -> float:
+        value = self.expression.evaluate()
+        if self.name:
+            variables[self.name] = value
+        return value
+
+    @override
+    def __repr__(self) -> float:
+        value = f'{self.expression}'
+        if self.name:
+            value = f'{self.name} = {value}'
+        return value
 
 
 class Expression(ExpressionBase):
@@ -245,31 +285,39 @@ class Exponential(ExpressionBase):
         return f'{self.base} ** {self.exponent}'
 
 
+class AtomicType(Enum):
+    NUMBER = 1
+    NAME = 2
+    GROUPED_EXPRESSION = 3
+
+
 class Atomic(ExpressionBase):
-    def __init__(self, is_signed, is_number, is_grouped, value):
-        self.is_signed = is_signed
-        self.is_number = is_number
-        self.is_grouped = is_grouped
+    def __init__(self, is_signed: bool, atomic_type: AtomicType, value):
+        self.is_signed: bool = is_signed
+        self.atomic_type: AtomicType = atomic_type
         self.value: Token | ExpressionBase = value
 
-    # Atomic => NUMBER | '(' Expression ')' | '-' Atomic
+    # Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
     @override
     def evaluate(self) -> float:
-        if self.is_number:
-            value = float(self.value.value)
-        else:
-            value = self.value.evaluate()
-            if self.is_signed:
-                value *= -1
+        match self.atomic_type:
+            case AtomicType.NUMBER:
+                value = float(self.value.value)
+            case AtomicType.NAME:
+                value = variables[self.value.value]
+            case AtomicType.GROUPED_EXPRESSION:
+                value = self.value.evaluate()
+        if self.is_signed:
+            value *= -1
         return value
 
     @override
     def __repr__(self) -> str:
-        if self.is_number:
-            return self.value.value
-        value = f'{self.value}'
-        if self.is_grouped:
-            value = f'({value})'
+        match self.atomic_type:
+            case AtomicType.NUMBER | AtomicType.NAME:
+                value = f'{self.value.value}'
+            case AtomicType.GROUPED_EXPRESSION:
+                value = f'({self.value})'
         if self.is_signed:
             value = f'-{value}'
         return value
@@ -291,11 +339,14 @@ class Parser:
 
     def __next__(self):
         if self.current:
-            result = self.parse_expression()
+            result = self.parse_statement()
             error, parsed_expression = result.error, result.parsed_expression
             del result
             if error and parsed_expression:
-                raise Exception("Error & parsed expression")
+                raise Exception(
+                    "Error & parsed expression\n" +
+                    f"error: {error}\nparsed expression: {parsed_expression}\n"
+                )
             elif error:
                 parsed_expression = None
             else:
@@ -310,6 +361,33 @@ class Parser:
             return ParseResult(parsed_expression, error)
         else:
             raise StopIteration
+
+    # Statement => ( NAME '=' )? Expression
+    def parse_statement(self) -> ParseResult:
+        is_assignment = False
+        if self.check(TokenType.NAME):
+            name = self.consume()
+            if not self.check(TokenType.EQUAL):
+                self.current = name
+                self.tokenizer.col = name.col + len(name.value)
+            else:
+                is_assignment = True
+                self.read_next_token()  # Skip =
+        expression = self.parse_expression()
+        if not is_assignment:
+            return expression
+        else:
+            error, parsed_expression =\
+                expression.error, expression.parsed_expression
+            del expression
+            if error:
+                parsed_expression = None
+            elif parsed_expression:
+                parsed_expression = Statement(
+                    name=name.value,
+                    expression=parsed_expression
+                )
+            return ParseResult(parsed_expression, error)
 
     # Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
     def parse_expression(self) -> ParseResult:
@@ -405,15 +483,20 @@ class Parser:
 
         return ParseResult(parsed_expression, error)
 
-    # Atomic => NUMBER | '(' Expression ')' | '-' Atomic
+    # Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
     def parse_atomic(self) -> ParseResult:
         parsed_expression = None
         error = None
         if self.check(TokenType.NUMBER):
             parsed_expression = Atomic(
                 is_signed=False,
-                is_number=True,
-                is_grouped=False,
+                atomic_type=AtomicType.NUMBER,
+                value=self.consume()
+            )
+        elif self.check(TokenType.NAME):
+            parsed_expression = Atomic(
+                is_signed=False,
+                atomic_type=AtomicType.NAME,
                 value=self.consume()
             )
         elif self.check(TokenType.LEFT_PARENTHESIS):
@@ -426,8 +509,7 @@ class Parser:
                     self.read_next_token()  # Skip )
                     parsed_expression = Atomic(
                         is_signed=False,
-                        is_number=False,
-                        is_grouped=True,
+                        atomic_type=AtomicType.GROUPED_EXPRESSION,
                         value=grouped_expression.parsed_expression
                     )
                 else:
@@ -456,8 +538,7 @@ class Parser:
             elif atomic.parsed_expression:
                 parsed_expression = Atomic(
                     is_signed=True,
-                    is_number=False,
-                    is_grouped=False,
+                    atomic_type=atomic.parsed_expression.atomic_type,
                     value=atomic.parsed_expression
                 )
             else:
