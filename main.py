@@ -321,6 +321,11 @@ class AtomicType(Enum):
     GROUPED_EXPRESSION = 3
 
 
+class VariableLookupError(Exception):
+    def __init__(self, name_token: Token):
+        self.name_token = name_token
+
+
 class Atomic(ExpressionBase):
     def __init__(self, is_signed: bool, atomic_type: AtomicType, value):
         self.is_signed: bool = is_signed
@@ -334,7 +339,10 @@ class Atomic(ExpressionBase):
             case AtomicType.NUMBER:
                 value = float(self.value.value)
             case AtomicType.NAME:
-                value = variables[self.value.value]
+                try:
+                    value = variables[self.value.value]
+                except KeyError:
+                    raise VariableLookupError(name_token=self.value)
             case AtomicType.GROUPED_EXPRESSION:
                 value = self.value.evaluate()
         if self.is_signed:
@@ -639,10 +647,17 @@ for parse_result in parser:
                 parsed_expression.evaluate(),
                 sep='\n'
             )
+            print()
         except DivisionByZeroError as e:
             error = parser.tokenizer.get_current_line()
             error += (' ' * e.operator_col) + '^\n'
             error += 'Division by zero'
             print(error, file=stderr)
             exit(1)
-        print()
+        except VariableLookupError as e:
+            error = parser.tokenizer.get_current_line()
+            error += (' ' * e.name_token.col)
+            error += ('^' * len(e.name_token.value)) + '\n'
+            error += f"Variable '{e.name_token.value}' not defined"
+            print(error, file=stderr)
+            exit(1)
