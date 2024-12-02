@@ -258,11 +258,17 @@ class Expression(ExpressionBase):
         right = self.right_term.evaluate()
         if self.operator.value == '+':
             return left + right
-        return left - right
+        else:
+            return left - right
 
     @override
     def __repr__(self) -> str:
         return f'{self.left_term} {self.operator.value} {self.right_term}'
+
+
+class DivisionByZeroError(Exception):
+    def __init__(self, operator_col: int):
+        self.operator_col = operator_col
 
 
 class Term(ExpressionBase):
@@ -278,7 +284,11 @@ class Term(ExpressionBase):
         right = self.right_exponential.evaluate()
         if self.operator.value == '*':
             return left * right
-        return left / right
+        else:
+            if right:
+                return left / right
+            else:
+                raise DivisionByZeroError(operator_col=self.operator.col)
 
     @override
     def __repr__(self) -> str:
@@ -614,7 +624,8 @@ class Parser:
         return ParseResult(parsed_expression, error)
 
 
-for parse_result in Parser():
+parser = Parser()
+for parse_result in parser:
     error, parsed_expression =\
         parse_result.error, parse_result.parsed_expression
     del parse_result
@@ -622,9 +633,16 @@ for parse_result in Parser():
         print(error, file=stderr)
         break
     elif parsed_expression:
-        print(
-            parsed_expression,
-            parsed_expression.evaluate(),
-            sep='\n'
-        )
+        try:
+            print(
+                parsed_expression,
+                parsed_expression.evaluate(),
+                sep='\n'
+            )
+        except DivisionByZeroError as e:
+            error = parser.tokenizer.get_current_line()
+            error += (' ' * e.operator_col) + '^\n'
+            error += 'Division by zero'
+            print(error, file=stderr)
+            exit(1)
         print()
