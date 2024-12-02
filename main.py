@@ -48,8 +48,15 @@ class Tokenizer:
         self.col: int = 0
         self.skip_end_of_line: bool = False
 
+    def is_at_end(self):
+        return self.line >= len(self.input_lines)
+
     def get_current_line(self):
-        return self.input_lines[self.line]
+        if not self.is_at_end():
+            return self.input_lines[self.line]
+        else:
+            # No more lines, return last line
+            return self.input_lines[-1]
 
     def has_more_lines(self):
         return self.line + 1 < len(self.input_lines)
@@ -64,128 +71,141 @@ class Tokenizer:
                 self.line += 1
                 self.col = 0
                 self.skip_end_of_line = False
-                if self.line >= len(self.input_lines):
+                if self.is_at_end():
+                    # no more tokens to generate, stop
                     raise StopIteration
                 else:
                     current_line = self.get_current_line()
-                    if not current_line.isspace():
+                    if not current_line.isspace():  # do not use an empty line
                         break
 
         while self.col < len(current_line):
-            if current_line[self.col] == '\n':
-                if not self.skip_end_of_line:
-                    read_token = Token(
-                        ttype=TokenType.END_OF_LINE,
-                        value='\\n',
-                        col=self.col
-                    )
-                    self.col += 1
-                    return read_token
-                else:
-                    # Jump to next non-empty line
-                    while True:
-                        self.line += 1
-                        self.col = 0
-                        self.skip_end_of_line = False
-                        if self.line >= len(self.input_lines):
-                            raise StopIteration
-                        else:
-                            current_line = self.get_current_line()
-                            if not current_line.isspace():
-                                break
-                    continue
-            elif current_line[self.col] == '\\':
-                all_whitespaces = True
-                rest = current_line[self.col+1:-1]
-                for c in rest:
-                    if not c.isspace():
-                        all_whitespaces = False
-                        break
-                    else:
-                        self.col += 1
-                if all_whitespaces:
-                    self.skip_end_of_line = True
-                    if len(rest) == 0:
-                        self.col += 1
-                else:
-                    raise StopIteration
-            elif not current_line[self.col].isspace():
-                read_token = None
-                if m := NUMBERS_PATTERN.match(current_line, self.col):
-                    read_token = Token(
-                        ttype=TokenType.NUMBER,
-                        value=m.group(),
-                        col=self.col
-                    )
-                elif m := NAMES_PATTERN.match(current_line, self.col):
-                    read_token = Token(
-                        ttype=TokenType.NAME,
-                        value=m.group(),
-                        col=self.col
-                    )
-                elif current_line[self.col] == '+':
-                    read_token = Token(
-                        ttype=TokenType.PLUS,
-                        value='+',
-                        col=self.col
-                    )
-                elif current_line[self.col] == '-':
-                    read_token = Token(
-                        ttype=TokenType.MINUS,
-                        value='-',
-                        col=self.col
-                    )
-                elif current_line[self.col] == '*':
-                    if self.col+1 < len(current_line) and \
-                            current_line[self.col+1] == '*':
+            match current_line[self.col]:
+                case '\n':
+                    if not self.skip_end_of_line:
                         read_token = Token(
-                            ttype=TokenType.EXPONENT,
-                            value='**',
+                            ttype=TokenType.END_OF_LINE,
+                            value='\\n',
                             col=self.col
                         )
+                        self.col += 1
+                        return read_token
                     else:
-                        read_token = Token(
-                            ttype=TokenType.STAR,
-                            value='*',
-                            col=self.col
-                        )
-                elif current_line[self.col] == '/':
-                    read_token = Token(
-                        ttype=TokenType.SLASH,
-                        value='/',
-                        col=self.col
-                    )
-                elif current_line[self.col] == '(':
-                    read_token = Token(
-                        ttype=TokenType.LEFT_PARENTHESIS,
-                        value='(',
-                        col=self.col
-                    )
-                elif current_line[self.col] == ')':
-                    read_token = Token(
-                        ttype=TokenType.RIGHT_PARENTHESIS,
-                        value=')',
-                        col=self.col
-                    )
-                elif current_line[self.col] == '=':
-                    read_token = Token(
-                        ttype=TokenType.EQUAL,
-                        value='=',
-                        col=self.col
-                    )
+                        # Jump to next non-empty line
+                        while True:
+                            self.line += 1
+                            self.col = 0
+                            self.skip_end_of_line = False
+                            if self.is_at_end():
+                                # no more tokens to generate, stop
+                                raise StopIteration
+                            else:
+                                current_line = self.get_current_line()
+                                if not current_line.isspace():
+                                    # we found a non-blank line, stop
+                                    break
+                        continue
 
-                if read_token:
-                    self.col += len(read_token.value)
-                    return read_token
-                else:
-                    raise StopIteration
-            else:
-                self.col += 1
+                case '\\':
+                    all_whitespaces = True
+                    rest = current_line[self.col+1:-1]
+                    for c in rest:
+                        if not c.isspace():
+                            all_whitespaces = False
+                            break
+                        else:
+                            self.col += 1
+                    if all_whitespaces:
+                        # all characters between \ and the next \n
+                        # are all whitespaces
+                        self.skip_end_of_line = True
+                        if len(rest) == 0:
+                            # in case \ is immediately followed by \n
+                            self.col += 1
+                    else:
+                        # A stray \, stop generating tokens
+                        raise StopIteration
+
+                case c if not c.isspace():
+                    read_token = None
+                    if number := NUMBERS_PATTERN.match(current_line, self.col):
+                        read_token = Token(
+                            ttype=TokenType.NUMBER,
+                            value=number.group(),
+                            col=self.col
+                        )
+                    elif name := NAMES_PATTERN.match(current_line, self.col):
+                        read_token = Token(
+                            ttype=TokenType.NAME,
+                            value=name.group(),
+                            col=self.col
+                        )
+                    else:
+                        match current_line[self.col]:
+                            case '+':
+                                read_token = Token(
+                                    ttype=TokenType.PLUS,
+                                    value='+',
+                                    col=self.col
+                                )
+                            case '-':
+                                read_token = Token(
+                                    ttype=TokenType.MINUS,
+                                    value='-',
+                                    col=self.col
+                                )
+                            case '*':
+                                if current_line[self.col:self.col+2] == '**':
+                                    read_token = Token(
+                                        ttype=TokenType.EXPONENT,
+                                        value='**',
+                                        col=self.col
+                                    )
+                                else:
+                                    read_token = Token(
+                                        ttype=TokenType.STAR,
+                                        value='*',
+                                        col=self.col
+                                    )
+                            case '/':
+                                read_token = Token(
+                                    ttype=TokenType.SLASH,
+                                    value='/',
+                                    col=self.col
+                                )
+                            case '(':
+                                read_token = Token(
+                                    ttype=TokenType.LEFT_PARENTHESIS,
+                                    value='(',
+                                    col=self.col
+                                )
+                            case ')':
+                                read_token = Token(
+                                    ttype=TokenType.RIGHT_PARENTHESIS,
+                                    value=')',
+                                    col=self.col
+                                )
+                            case '=':
+                                read_token = Token(
+                                    ttype=TokenType.EQUAL,
+                                    value='=',
+                                    col=self.col
+                                )
+                    if read_token:
+                        self.col += len(read_token.value)
+                        return read_token
+                    else:
+                        # no token was generated, stop iteration
+                        raise StopIteration
+
+                case _:
+                    # skip any whitespace character
+                    self.col += 1
 
 
 # Context-Free Grammar
-# Statement => ( NAME '=' )? Expression
-# Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
+# Statement => ( NAME '=' )? Expression END_OF_LINE
+# Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' ) Exponential )*
 # Exponential => Atomic ( '**' Atomic )?
 # Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
@@ -209,7 +229,7 @@ class Statement(ExpressionBase):
         self.name: str = name
         self.expression: ExpressionBase = expression
 
-    # Statement => ( NAME '=' )? Expression
+    # Statement => ( NAME '=' )? Expression END_OF_LINE
     @override
     def evaluate(self) -> float:
         value = self.expression.evaluate()
@@ -231,7 +251,7 @@ class Expression(ExpressionBase):
         self.operator: Token = op
         self.right_term: ExpressionBase = rhs
 
-    # Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
+    # Expression => Term ( ( '+' | '-' ) Term )*
     @override
     def evaluate(self) -> float:
         left = self.left_term.evaluate()
@@ -334,6 +354,24 @@ class Parser:
         self.tokenizer = Tokenizer()
         self.read_next_token()
 
+    def read_next_token(self):
+        try:
+            self.current: Token = next(self.tokenizer)
+        except StopIteration:
+            self.current: Token = None
+
+    def consume(self) -> Token:
+        copy = self.current
+        self.read_next_token()
+        return copy
+
+    def check(self, *ttype: TokenType) -> bool:
+        if self.current:
+            for t in ttype:
+                if self.current.ttype == t:
+                    return True
+        return False
+
     def __iter__(self):
         return self
 
@@ -342,32 +380,44 @@ class Parser:
             result = self.parse_statement()
             error, parsed_expression = result.error, result.parsed_expression
             del result
-            if error and parsed_expression:
-                raise Exception(
-                    "Error & parsed expression\n" +
-                    f"error: {error}\nparsed expression: {parsed_expression}\n"
-                )
-            elif error:
-                parsed_expression = None
+            if parsed_expression:
+                if error:
+                    raise Exception(
+                        "Error & parsed expression\n" +
+                        f"error: {error}\n" +
+                        f"parsed expression: {parsed_expression}\n"
+                    )
+                else:
+                    # Parsing successful, no errors
+                    if self.current and not self.check(TokenType.END_OF_LINE):
+                        parsed_expression = None
+                        error = self.tokenizer.get_current_line()
+                        error += (' ' * self.current.col) + \
+                            ('^' * len(self.current.value)) + '\n'
+                        error += 'Unexpected item'
+                    elif self.check(TokenType.END_OF_LINE):
+                        self.read_next_token()  # Skip end of line
+                    return ParseResult(parsed_expression, error)
             else:
-                if self.current and not self.check(TokenType.END_OF_LINE):
-                    parsed_expression = None
-                    error = self.tokenizer.get_current_line()
-                    error += (' ' * self.current.col) + \
-                        ('^' * len(self.current.value)) + '\n'
-                    error += 'Unexpected item'
-                elif self.check(TokenType.END_OF_LINE):
-                    self.read_next_token()  # Skip end of line
-            return ParseResult(parsed_expression, error)
+                if error:
+                    # A parsing (syntax) error occurred
+                    # parsed_expression is None
+                    return ParseResult(parsed_expression, error)
+                else:
+                    # no statement was parsed, stop iteration
+                    raise StopIteration
         else:
+            # no more tokens to parse, stop iteration
             raise StopIteration
 
-    # Statement => ( NAME '=' )? Expression
+    # Statement => ( NAME '=' )? Expression END_OF_LINE
     def parse_statement(self) -> ParseResult:
         is_assignment = False
         if self.check(TokenType.NAME):
             name = self.consume()
             if not self.check(TokenType.EQUAL):
+                # Rewind to (name) token
+                # this is NOT an assignment
                 self.current = name
                 self.tokenizer.col = name.col + len(name.value)
             else:
@@ -389,7 +439,7 @@ class Parser:
                 )
             return ParseResult(parsed_expression, error)
 
-    # Expression => Term ( ( '+' | '-' ) Term )* END_OF_LINE
+    # Expression => Term ( ( '+' | '-' ) Term )*
     def parse_expression(self) -> ParseResult:
         initial = self.parse_term()
         error, parsed_expression = initial.error, initial.parsed_expression
@@ -529,7 +579,7 @@ class Parser:
                 error = current_line[0:col] + \
                     ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
-                error += 'Expected expression ('
+                error += 'Expected expression after ('
         elif self.check(TokenType.MINUS):
             self.read_next_token()  # Skip -
             atomic = self.parse_atomic()
@@ -551,11 +601,7 @@ class Parser:
                 error += (' ' * col) + '^\n'
                 error += 'Expected expression'
         elif self.check(TokenType.END_OF_LINE):
-            if self.tokenizer.col == 0:
-                current_line =\
-                    self.tokenizer.input_lines[self.tokenizer.line-1]
-            else:
-                current_line = self.tokenizer.get_current_line()
+            current_line = self.tokenizer.get_current_line()
             end = len(current_line) - 1
             for k in range(end, -1, -1):
                 if not current_line[k].isspace():
@@ -566,24 +612,6 @@ class Parser:
             error += f'Unexpected end of line {self.tokenizer.line}'
 
         return ParseResult(parsed_expression, error)
-
-    def consume(self) -> Token:
-        copy = self.current
-        self.read_next_token()
-        return copy
-
-    def check(self, *ttype: TokenType) -> bool:
-        if self.current:
-            for t in ttype:
-                if self.current.ttype == t:
-                    return True
-        return False
-
-    def read_next_token(self):
-        try:
-            self.current: Token = next(self.tokenizer)
-        except StopIteration:
-            self.current: Token = None
 
 
 for parse_result in Parser():
