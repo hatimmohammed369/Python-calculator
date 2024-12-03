@@ -6,6 +6,7 @@ from sys import argv, stderr
 from re import compile
 from typing import override
 from abc import ABC, abstractmethod
+import math
 
 
 class TokenType(Enum):
@@ -20,6 +21,7 @@ class TokenType(Enum):
     END_OF_LINE = 9
     EQUAL = 10
     NAME = 11
+    COMMA = 12
 
 
 class Token:
@@ -191,6 +193,12 @@ class Tokenizer:
                                     value='=',
                                     col=self.col
                                 )
+                            case ',':
+                                read_token = Token(
+                                    ttype=TokenType.COMMA,
+                                    value=',',
+                                    col=self.col
+                                )
                     if read_token:
                         self.col += len(read_token.value)
                         return read_token
@@ -208,10 +216,17 @@ class Tokenizer:
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' ) Exponential )*
 # Exponential => Atomic ( '**' Atomic )?
-# Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
+# Atomic => NUMBER | NAME | '(' Expression ')' | FunctionCall | '-' Atomic
+# FunctionCall => NAME '(' ( Expression ',' )* ')'
 
 
-variables: dict[str, float] = {}
+MATHEMATICAL_CONSTANTS = {'PI', 'E', 'TAU', 'INFINITY', 'NaN'}
+names: dict[str, float] = {}
+names['PI'] = math.pi
+names['E'] = math.e
+names['TAU'] = math.tau
+names['INFINITY'] = math.inf
+names['NaN'] = math.nan
 
 
 class ExpressionBase(ABC):
@@ -224,17 +239,25 @@ class ExpressionBase(ABC):
         pass
 
 
+class RedefiningConstantError(Exception):
+    def __init__(self, constant_token: Token):
+        self.constant_token: Token = constant_token
+
+
 class Statement(ExpressionBase):
-    def __init__(self, name: str, expression: ExpressionBase):
-        self.name: str = name
+    def __init__(self, name_token: Token, expression: ExpressionBase):
+        self.name_token: Token = name_token
         self.expression: ExpressionBase = expression
 
     # Statement => ( NAME '=' )? Expression END_OF_LINE
     @override
     def evaluate(self) -> float:
         value = self.expression.evaluate()
-        if self.name:
-            variables[self.name] = value
+        if self.name_token:
+            if self.name_token.value not in MATHEMATICAL_CONSTANTS:
+                names[self.name_token.value] = value
+            else:
+                raise RedefiningConstantError(constant_token=self.name)
         return value
 
     @override
@@ -319,9 +342,10 @@ class AtomicType(Enum):
     NUMBER = 1
     NAME = 2
     GROUPED_EXPRESSION = 3
+    FUNCTION_CALL = 4
 
 
-class VariableLookupError(Exception):
+class NameLookupError(Exception):
     def __init__(self, name_token: Token):
         self.name_token = name_token
 
@@ -340,9 +364,9 @@ class Atomic(ExpressionBase):
                 value = float(self.value.value)
             case AtomicType.NAME:
                 try:
-                    value = variables[self.value.value]
+                    value = names[self.value.value]
                 except KeyError:
-                    raise VariableLookupError(name_token=self.value)
+                    raise NameLookupError(name_token=self.value)
             case AtomicType.GROUPED_EXPRESSION:
                 value = self.value.evaluate()
         if self.is_signed:
@@ -358,6 +382,29 @@ class Atomic(ExpressionBase):
                 value = f'({self.value})'
         if self.is_signed:
             value = f'-{value}'
+        return value
+
+
+class FunctionCall(Atomic):
+    def __init__(self, function_name: Token, arguments: list[ExpressionBase]):
+        self.is_signed = False
+        self.atomic_type = AtomicType.FUNCTION_CALL
+        self.value = function_name
+        self.arguments = arguments
+
+    # FunctionCall => NAME '(' ( Expression ',' )* ')'
+    @override
+    def evaluate(self) -> float:
+        function = eval(f'math.{self.value.value}')
+        arguments = [argument.evaluate() for argument in self.arguments]
+        return function(*arguments)
+
+    @override
+    def __repr__(self) -> str:
+        value = self.value.value + '('
+        for argument in self.arguments[:-1]:
+            value += f'{argument}, '
+        value += f'{self.arguments[-1]})'
         return value
 
 
@@ -410,8 +457,8 @@ class Parser:
                     if self.current and not self.check(TokenType.END_OF_LINE):
                         parsed_expression = None
                         error = self.tokenizer.get_current_line()
-                        error += (' ' * self.current.col) + \
-                            ('^' * len(self.current.value)) + '\n'
+                        error += (' ' * self.current.col)
+                        error += ('^' * len(self.current.value)) + '\n'
                         error += 'Unexpected item'
                     elif self.check(TokenType.END_OF_LINE):
                         self.read_next_token()  # Skip end of line
@@ -445,14 +492,14 @@ class Parser:
         if not is_assignment:
             return expression
         else:
-            error, parsed_expression =\
-                expression.error, expression.parsed_expression
+            error = expression.error
+            parsed_expression = expression.parsed_expression
             del expression
             if error:
                 parsed_expression = None
             elif parsed_expression:
                 parsed_expression = Statement(
-                    name=name.value,
+                    name_token=name,
                     expression=parsed_expression
                 )
             return ParseResult(parsed_expression, error)
@@ -482,8 +529,8 @@ class Parser:
                     parsed_expression = None
                     current_line = self.tokenizer.get_current_line()
                     col = operator.col + 1
-                    error = current_line[0:col] + \
-                        ' ' + current_line[col:]
+                    error = current_line[0:col]
+                    error += ' ' + current_line[col:]
                     error += (' ' * col) + '^\n'
                     error += f'Expected expression after {operator.value}'
                     break
@@ -515,8 +562,8 @@ class Parser:
                     parsed_expression = None
                     current_line = self.tokenizer.get_current_line()
                     col = operator.col + 1
-                    error = current_line[0:col] + \
-                        ' ' + current_line[col:]
+                    error = current_line[0:col]
+                    error += ' ' + current_line[col:]
                     error += (' ' * col) + '^\n'
                     error += f'Expected expression after {operator.value}'
                     break
@@ -544,8 +591,8 @@ class Parser:
             else:
                 parsed_expression = None
                 current_line = self.tokenizer.get_current_line()
-                error = current_line[0:col] + \
-                    ' ' + current_line[col:]
+                error = current_line[0:col]
+                error += ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
                 error += 'Expected expression after **'
 
@@ -562,11 +609,55 @@ class Parser:
                 value=self.consume()
             )
         elif self.check(TokenType.NAME):
-            parsed_expression = Atomic(
-                is_signed=False,
-                atomic_type=AtomicType.NAME,
-                value=self.consume()
-            )
+            name = self.consume()
+            if not self.check(TokenType.LEFT_PARENTHESIS):
+                parsed_expression = Atomic(
+                    is_signed=False,
+                    atomic_type=AtomicType.NAME,
+                    value=name
+                )
+            else:
+                opening = self.tokenizer.col
+                self.read_next_token()  # Skip (
+                arguments = []
+                while True:
+                    expression = self.parse_expression()
+                    if expression.error:
+                        error = expression.error
+                        break
+                    elif expression.parsed_expression:
+                        arguments.append(expression.parsed_expression)
+                        if self.check(TokenType.COMMA):
+                            self.read_next_token()  # Skip ,
+                            continue
+                        elif self.check(TokenType.RIGHT_PARENTHESIS):
+                            break
+                        else:
+                            error = self.tokenizer.get_current_line()
+                            error += (' ' * self.current.col)
+                            error += ('^' * len(self.current.value)) + '\n'
+                            error += 'Unexpected item'
+                            break
+                    else:
+                        break
+                if not error:
+                    if self.check(TokenType.COMMA):
+                        self.read_next_token()  # Skip trailing ,
+                    if self.check(TokenType.RIGHT_PARENTHESIS):
+                        self.read_next_token()  # Skip )
+                        parsed_expression = FunctionCall(
+                            function_name=name,
+                            arguments=arguments
+                        )
+                    else:
+                        current_line = self.tokenizer.get_current_line()
+                        col = len(current_line) - 1
+                        if self.current:
+                            col = self.current.col
+                        error = current_line[0:col]
+                        error += ' ' + current_line[col:]
+                        error += (' ' * col) + '^\n'
+                        error += 'Expected ) after function arguments list'
         elif self.check(TokenType.LEFT_PARENTHESIS):
             self.read_next_token()  # Skip (
             grouped_expression = self.parse_expression()
@@ -585,8 +676,8 @@ class Parser:
                     col = len(current_line) - 1
                     if self.current:
                         col = self.current.col
-                    error = current_line[0:col] + \
-                        ' ' + current_line[col:]
+                    error = current_line[0:col]
+                    error += ' ' + current_line[col:]
                     error += (' ' * col) + '^\n'
                     error += 'Expected ) after expression'
             else:
@@ -594,8 +685,8 @@ class Parser:
                 col = len(current_line) - 1
                 if self.current:
                     col = self.current.col
-                error = current_line[0:col] + \
-                    ' ' + current_line[col:]
+                error = current_line[0:col]
+                error += ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
                 error += 'Expected expression after ('
         elif self.check(TokenType.MINUS):
@@ -614,8 +705,8 @@ class Parser:
                 col = len(current_line) - 1
                 if self.current:
                     col = self.current.col
-                error = current_line[0:col] + \
-                    ' ' + current_line[col:]
+                error = current_line[0:col]
+                error += ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
                 error += 'Expected expression'
         elif self.check(TokenType.END_OF_LINE):
@@ -627,15 +718,15 @@ class Parser:
                     break
             error = current_line[:end+1] + '\n'
             error += (' ' * (end + 1)) + '^\n'
-            error += f'Unexpected end of line {self.tokenizer.line}'
+            error += f'Unexpected end of line {self.tokenizer.line+1}'
 
         return ParseResult(parsed_expression, error)
 
 
 parser = Parser()
 for parse_result in parser:
-    error, parsed_expression =\
-        parse_result.error, parse_result.parsed_expression
+    error = parse_result.error
+    parsed_expression = parse_result.parsed_expression
     del parse_result
     if error:
         print(error, file=stderr)
@@ -654,10 +745,18 @@ for parse_result in parser:
             error += 'Division by zero'
             print(error, file=stderr)
             exit(1)
-        except VariableLookupError as e:
+        except NameLookupError as e:
             error = parser.tokenizer.get_current_line()
             error += (' ' * e.name_token.col)
             error += ('^' * len(e.name_token.value)) + '\n'
             error += f"Variable '{e.name_token.value}' not defined"
+            print(error, file=stderr)
+            exit(1)
+        except RedefiningConstantError as e:
+            error = parser.tokenizer.get_current_line()
+            error += (' ' * e.constant_token.col)
+            error += ('^' * len(e.constant_token.value)) + '\n'
+            error += "Attempting to redefine mathematical constant"
+            error += e.constant_token.value
             print(error, file=stderr)
             exit(1)
