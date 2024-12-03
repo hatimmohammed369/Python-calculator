@@ -3,11 +3,12 @@
 # python main.py path_to_input_file
 
 from enum import Enum
-from sys import argv, stderr
+from sys import stderr
 from re import compile
 from typing import override
 from abc import ABC, abstractmethod
 import math
+import argparse
 
 
 class TokenType(Enum):
@@ -47,8 +48,8 @@ NAMES_PATTERN = compile(r'[a-zA-Z_]+\w*')
 
 
 class Tokenizer:
-    def __init__(self):
-        self.input_lines: list[str] = open(argv[1], 'r').readlines()
+    def __init__(self, input_lines: list[str]):
+        self.input_lines: list[str] = input_lines
         self.line: int = 0
         self.col: int = 0
         self.skip_end_of_line: bool = False
@@ -278,8 +279,8 @@ class Statement(ExpressionBase):
     @override
     def __repr__(self) -> float:
         value = f'{self.expression}'
-        if self.name:
-            value = f'{self.name} = {value}'
+        if self.name_token:
+            value = f'{self.name_token.value} = {value}'
         return value
 
 
@@ -446,8 +447,8 @@ class ParseResult:
 
 
 class Parser:
-    def __init__(self):
-        self.tokenizer = Tokenizer()
+    def __init__(self, input_lines: list[str]):
+        self.tokenizer = Tokenizer(input_lines)
         self.read_next_token()
 
     def read_next_token(self):
@@ -704,7 +705,7 @@ class Parser:
                             col = self.current.col
                         error += current_line[:col]
                         error += ' ' + current_line[col:]
-                        error += (' ' * col) + '^\n'
+                        error += (' ' * col) + '^'
         elif self.check(TokenType.LEFT_PARENTHESIS):
             self.read_next_token()  # Skip (
             grouped_expression = self.parse_expression()
@@ -751,7 +752,7 @@ class Parser:
                     col = len(current_line) - 1
                 error += current_line[0:col]
                 error += ' ' + current_line[col:]
-                error += (' ' * col) + '^\n'
+                error += (' ' * col) + '^'
         elif self.check(TokenType.MINUS):
             self.read_next_token()  # Skip -
             atomic = self.parse_atomic()
@@ -777,7 +778,7 @@ class Parser:
                     col = len(current_line) - 1
                 error += current_line[0:col]
                 error += ' ' + current_line[col:]
-                error += (' ' * col) + '^\n'
+                error += (' ' * col) + '^'
         elif self.check(TokenType.END_OF_LINE):
             # Unexpected end of line
             line = len(self.tokenizer.input_lines) - 1
@@ -792,54 +793,79 @@ class Parser:
                     end = k
                     break
             error += current_line[:end+1] + '\n'
-            error += (' ' * (end + 1)) + '^\n'
+            error += (' ' * (end + 1)) + '^'
         return ParseResult(parsed_expression, error)
 
 
-parser = Parser()
-for parse_result in parser:
-    error = parse_result.error
-    parsed_expression = parse_result.parsed_expression
-    del parse_result
-    if error:
-        print(error, file=stderr)
-        break
-    elif parsed_expression:
+def process(parser: Parser, interactive: bool):
+    for parse_result in parser:
+        error = parse_result.error
+        parsed_expression = parse_result.parsed_expression
+        del parse_result
+        if error:
+            print(error, file=stderr)
+            break
+        elif parsed_expression:
+            try:
+                print(
+                    parsed_expression,
+                    parsed_expression.evaluate(),
+                    sep='\n'
+                )
+                print()
+                continue
+            except DivisionByZeroError as e:
+                # Division by zero
+                error = f'Error in line {e.operator.line+1}: '
+                error += 'Division by zero\n'
+                error += parser.tokenizer.input_lines[e.operator.line]
+                error += (' ' * e.operator.col) + '^'
+            except NameLookupError as e:
+                # Variable not found
+                error = f'Error in line {e.name_token.line+1}: '
+                error += f"Variable '{e.name_token.value}' not defined\n"
+                error += parser.tokenizer.input_lines[e.name_token.line]
+                error += (' ' * e.name_token.col)
+                error += ('^' * len(e.name_token.value))
+            except RedefiningConstantError as e:
+                # Attempting to redefine mathematical constant
+                error = f'Error in line {e.constant_token.line+1}: '
+                error += 'Attempting to redefine mathematical constant '
+                error += f"'{e.constant_token.value}'\n"
+                error += parser.tokenizer.input_lines[e.constant_token.line]
+                error += (' ' * e.constant_token.col)
+                error += ('^' * len(e.constant_token.value))
+            except InvalidFunctionCallError as e:
+                # Invalid function call
+                error = f'Error in line {e.function_name_token.line+1}: '
+                error += f'{e.error}\n'
+                error += parser.tokenizer.input_lines[
+                    e.function_name_token.line
+                ]
+                error += ' ' * e.function_name_token.col
+                error += '^' * len(e.function_name_token.value)
+            print(error, file=stderr)
+            if not interactive:
+                exit(1)
+
+
+args_parser = argparse.ArgumentParser()
+args_parser.add_argument('-f', '--file', help='input file to process')
+args = args_parser.parse_args()
+if args.file:
+    process(
+        parser=Parser(
+            input_lines=open(args.file, 'r').readlines()
+        ),
+        interactive=False
+    )
+else:
+    while True:
         try:
-            print(
-                parsed_expression,
-                parsed_expression.evaluate(),
-                sep='\n'
+            line = input("> ") + '\n'
+            process(
+                parser=Parser(input_lines=[line]),
+                interactive=True
             )
-            print()
-            continue
-        except DivisionByZeroError as e:
-            # Division by zero
-            error = f'Error in line {e.operator.line+1}: '
-            error += 'Division by zero\n'
-            error += parser.tokenizer.input_lines[e.operator.line]
-            error += (' ' * e.operator.col) + '^'
-        except NameLookupError as e:
-            # Variable not found
-            error = f'Error in line {e.name_token.line+1}: '
-            error += f"Variable '{e.name_token.value}' not defined\n"
-            error += parser.tokenizer.input_lines[e.name_token.line]
-            error += (' ' * e.name_token.col)
-            error += ('^' * len(e.name_token.value))
-        except RedefiningConstantError as e:
-            # Attempting to redefine mathematical constant
-            error = f'Error in line {e.constant_token.line+1}: '
-            error += 'Attempting to redefine mathematical constant '
-            error += f"'{e.constant_token.value}'\n"
-            error += parser.tokenizer.input_lines[e.constant_token.line]
-            error += (' ' * e.constant_token.col)
-            error += ('^' * len(e.constant_token.value))
-        except InvalidFunctionCallError as e:
-            # Invalid function call
-            error = f'Error in line {e.function_name_token.line+1}: '
-            error += f'{e.error}\n'
-            error += parser.tokenizer.input_lines[e.function_name_token.line]
-            error += ' ' * e.function_name_token.col
-            error += '^' * len(e.function_name_token.value)
-        print(error, file=stderr)
-        exit(1)
+        except EOFError:
+            exit(1)
