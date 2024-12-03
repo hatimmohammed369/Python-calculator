@@ -247,7 +247,7 @@ names['NaN'] = math.nan
 
 class ExpressionBase(ABC):
     @abstractmethod
-    def evaluate(self) -> float:
+    def evaluate(self):
         pass
 
     @abstractmethod
@@ -267,7 +267,7 @@ class Statement(ExpressionBase):
 
     # Statement => ( NAME '=' )? Expression END_OF_LINE
     @override
-    def evaluate(self) -> float:
+    def evaluate(self):
         value = self.expression.evaluate()
         if self.name_token:
             if self.name_token.value not in MATHEMATICAL_CONSTANTS:
@@ -277,7 +277,7 @@ class Statement(ExpressionBase):
         return value
 
     @override
-    def __repr__(self) -> float:
+    def __repr__(self):
         value = f'{self.expression}'
         if self.name_token:
             value = f'{self.name_token.value} = {value}'
@@ -292,7 +292,7 @@ class Expression(ExpressionBase):
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     @override
-    def evaluate(self) -> float:
+    def evaluate(self):
         left = self.left_term.evaluate()
         right = self.right_term.evaluate()
         if self.operator.value == '+':
@@ -318,7 +318,7 @@ class Term(ExpressionBase):
 
     # Term => Exponential ( ( '*' | '/' ) Exponential )*
     @override
-    def evaluate(self) -> float:
+    def evaluate(self):
         left = self.left_exponential.evaluate()
         right = self.right_exponential.evaluate()
         if self.operator.value == '*':
@@ -344,7 +344,7 @@ class Exponential(ExpressionBase):
 
     # Exponential => Atomic ( '**' Atomic )?
     @override
-    def evaluate(self) -> float:
+    def evaluate(self):
         base = self.base.evaluate()
         exponent = self.exponent.evaluate()
         return base ** exponent
@@ -374,10 +374,13 @@ class Atomic(ExpressionBase):
 
     # Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
     @override
-    def evaluate(self) -> float:
+    def evaluate(self):
         match self.atomic_type:
             case AtomicType.NUMBER:
-                value = float(self.value.value)
+                if '.' in self.value.value:
+                    value = float(self.value.value)
+                else:
+                    value = int(self.value.value)
             case AtomicType.NAME:
                 try:
                     value = names[self.value.value]
@@ -420,7 +423,7 @@ class FunctionCall(Atomic):
 
     # FunctionCall => NAME '(' ( Expression ',' )* ')'
     @override
-    def evaluate(self) -> float:
+    def evaluate(self):
         function = eval(f'math.{self.value.value}')
         arguments = [argument.evaluate() for argument in self.arguments]
         try:
