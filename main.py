@@ -27,20 +27,22 @@ class TokenType(Enum):
 
 class Token:
     # Constructor
-    def __init__(self, ttype: TokenType, value: str, col: int):
+    def __init__(self, ttype: TokenType, value: str, line: int, col: int):
         self.ttype: TokenType = ttype
         self.value: str = value
+        self.line: int = line
         self.col: int = col
 
     def __repr__(self):
         value = f'Token(ttype={self.ttype}, '
         value += f"value='{self.value}', "
+        value += f"line='{self.line}', "
         value += f'col={self.col})'
         return value
 
 
 # Scan input file lines to extract tokens
-NUMBERS_PATTERN = compile(r'(-)?\d+([.]\d+((e|E)(-|\+)?\d+)?)?')
+NUMBERS_PATTERN = compile(r'\d+([.]\d+((e|E)(-|\+)?\d+)?)?')
 NAMES_PATTERN = compile(r'[a-zA-Z_]+\w*')
 
 
@@ -89,6 +91,7 @@ class Tokenizer:
                         read_token = Token(
                             ttype=TokenType.END_OF_LINE,
                             value='\\n',
+                            line=self.line,
                             col=self.col
                         )
                         self.col += 1
@@ -135,12 +138,14 @@ class Tokenizer:
                         read_token = Token(
                             ttype=TokenType.NUMBER,
                             value=number.group(),
+                            line=self.line,
                             col=self.col
                         )
                     elif name := NAMES_PATTERN.match(current_line, self.col):
                         read_token = Token(
                             ttype=TokenType.NAME,
                             value=name.group(),
+                            line=self.line,
                             col=self.col
                         )
                     else:
@@ -149,12 +154,14 @@ class Tokenizer:
                                 read_token = Token(
                                     ttype=TokenType.PLUS,
                                     value='+',
+                                    line=self.line,
                                     col=self.col
                                 )
                             case '-':
                                 read_token = Token(
                                     ttype=TokenType.MINUS,
                                     value='-',
+                                    line=self.line,
                                     col=self.col
                                 )
                             case '*':
@@ -162,42 +169,49 @@ class Tokenizer:
                                     read_token = Token(
                                         ttype=TokenType.EXPONENT,
                                         value='**',
+                                        line=self.line,
                                         col=self.col
                                     )
                                 else:
                                     read_token = Token(
                                         ttype=TokenType.STAR,
                                         value='*',
+                                        line=self.line,
                                         col=self.col
                                     )
                             case '/':
                                 read_token = Token(
                                     ttype=TokenType.SLASH,
                                     value='/',
+                                    line=self.line,
                                     col=self.col
                                 )
                             case '(':
                                 read_token = Token(
                                     ttype=TokenType.LEFT_PARENTHESIS,
                                     value='(',
+                                    line=self.line,
                                     col=self.col
                                 )
                             case ')':
                                 read_token = Token(
                                     ttype=TokenType.RIGHT_PARENTHESIS,
                                     value=')',
+                                    line=self.line,
                                     col=self.col
                                 )
                             case '=':
                                 read_token = Token(
                                     ttype=TokenType.EQUAL,
                                     value='=',
+                                    line=self.line,
                                     col=self.col
                                 )
                             case ',':
                                 read_token = Token(
                                     ttype=TokenType.COMMA,
                                     value=',',
+                                    line=self.line,
                                     col=self.col
                                 )
                     if read_token:
@@ -258,7 +272,7 @@ class Statement(ExpressionBase):
             if self.name_token.value not in MATHEMATICAL_CONSTANTS:
                 names[self.name_token.value] = value
             else:
-                raise RedefiningConstantError(constant_token=self.name)
+                raise RedefiningConstantError(constant_token=self.name_token)
         return value
 
     @override
@@ -291,8 +305,8 @@ class Expression(ExpressionBase):
 
 
 class DivisionByZeroError(Exception):
-    def __init__(self, operator_col: int):
-        self.operator_col = operator_col
+    def __init__(self, operator: Token):
+        self.operator = operator
 
 
 class Term(ExpressionBase):
@@ -312,7 +326,7 @@ class Term(ExpressionBase):
             if right:
                 return left / right
             else:
-                raise DivisionByZeroError(operator_col=self.operator.col)
+                raise DivisionByZeroError(operator=self.operator)
 
     @override
     def __repr__(self) -> str:
@@ -386,6 +400,16 @@ class Atomic(ExpressionBase):
         return value
 
 
+class InvalidFunctionCallError(Exception):
+    def __init__(
+            self,
+            function_name_token: Token,
+            exception_error_message: str
+    ):
+        self.function_name_token: Token = function_name_token
+        self.error = exception_error_message
+
+
 class FunctionCall(Atomic):
     def __init__(self, function_name: Token, arguments: list[ExpressionBase]):
         self.is_signed = False
@@ -398,7 +422,13 @@ class FunctionCall(Atomic):
     def evaluate(self) -> float:
         function = eval(f'math.{self.value.value}')
         arguments = [argument.evaluate() for argument in self.arguments]
-        return function(*arguments)
+        try:
+            return function(*arguments)
+        except TypeError as e:
+            raise InvalidFunctionCallError(
+                function_name_token=self.value,
+                exception_error_message=str(e).replace('math.', 'Function ')
+            )
 
     @override
     def __repr__(self) -> str:
@@ -438,6 +468,12 @@ class Parser:
                     return True
         return False
 
+    def get_token_line(self, token: Token) -> str:
+        if token:
+            return self.tokenizer.input_lines[token.line]
+        else:
+            return self.tokenizer.input_lines[-1]
+
     def __iter__(self):
         return self
 
@@ -456,11 +492,13 @@ class Parser:
                 else:
                     # Parsing successful, no errors
                     if self.current and not self.check(TokenType.END_OF_LINE):
+                        # Invalid syntax, unexpected item
                         parsed_expression = None
-                        error = self.tokenizer.get_current_line()
+                        error = f'Error in line {self.current.line+1}: '
+                        error += 'Invalid syntax, unexpected item\n'
+                        error += self.tokenizer.input_lines[self.current.line]
                         error += (' ' * self.current.col)
-                        error += ('^' * len(self.current.value)) + '\n'
-                        error += 'Unexpected item'
+                        error += ('^' * len(self.current.value))
                     elif self.check(TokenType.END_OF_LINE):
                         self.read_next_token()  # Skip end of line
                     return ParseResult(parsed_expression, error)
@@ -510,12 +548,10 @@ class Parser:
         initial = self.parse_term()
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
-
         if parsed_expression:
             while self.check(TokenType.PLUS, TokenType.MINUS):
                 operator = self.consume()  # Get operator
                 right_term = self.parse_term()
-
                 if right_term.error:
                     parsed_expression = None
                     error = right_term.error
@@ -527,15 +563,15 @@ class Parser:
                         rhs=right_term.parsed_expression
                     )
                 else:
+                    # Expected expression after + or -
                     parsed_expression = None
-                    current_line = self.tokenizer.get_current_line()
-                    col = operator.col + 1
-                    error = current_line[0:col]
-                    error += ' ' + current_line[col:]
-                    error += (' ' * col) + '^\n'
-                    error += f'Expected expression after {operator.value}'
+                    error = f'Error in line {operator.line+1}: '
+                    error += f'Expected expression after {operator.value}\n'
+                    current_line = self.get_token_line(operator)
+                    error += current_line[:operator.col+1]
+                    error += ' ' + current_line[operator.col+1:]
+                    error += (' ' * (operator.col+1)) + '^'
                     break
-
         return ParseResult(parsed_expression, error)
 
     # Term => Exponential ( ( '*' | '/' ) Exponential )*
@@ -543,12 +579,10 @@ class Parser:
         initial = self.parse_exponential()
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
-
         if parsed_expression:
             while self.check(TokenType.STAR, TokenType.SLASH):
                 operator = self.consume()  # Get operator
                 right_exponential = self.parse_exponential()
-
                 if right_exponential.error:
                     parsed_expression = None
                     error = right_exponential.error
@@ -560,15 +594,15 @@ class Parser:
                         rhs=right_exponential.parsed_expression
                     )
                 else:
+                    # Expected expression after + or -
                     parsed_expression = None
-                    current_line = self.tokenizer.get_current_line()
-                    col = operator.col + 1
-                    error = current_line[0:col]
-                    error += ' ' + current_line[col:]
-                    error += (' ' * col) + '^\n'
-                    error += f'Expected expression after {operator.value}'
+                    error = f'Error in line {operator.line+1}: '
+                    error += f'Expected expression after {operator.value}\n'
+                    current_line = self.get_token_line(operator)
+                    error += current_line[:operator.col+1]
+                    error += ' ' + current_line[operator.col+1:]
+                    error += (' ' * (operator.col+1)) + '^'
                     break
-
         return ParseResult(parsed_expression, error)
 
     # Exponential => Atomic ( '**' Atomic )?
@@ -576,10 +610,8 @@ class Parser:
         initial = self.parse_atomic()
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
-
         if parsed_expression and self.check(TokenType.EXPONENT):
-            col = self.current.col + 2
-            self.read_next_token()  # Skip **
+            operator = self.consume()
             exponent = self.parse_atomic()
             if exponent.error:
                 parsed_expression = None
@@ -590,13 +622,14 @@ class Parser:
                     exponent=exponent.parsed_expression
                 )
             else:
+                # Expected expression after **
                 parsed_expression = None
-                current_line = self.tokenizer.get_current_line()
-                error = current_line[0:col]
-                error += ' ' + current_line[col:]
-                error += (' ' * col) + '^\n'
+                error = f'Error in line {operator.line+1}: '
                 error += 'Expected expression after **'
-
+                current_line = self.get_token_line(operator)
+                error += current_line[:operator.col+2]
+                error += ' ' + current_line[operator.col+1:]
+                error += (' ' * (operator.col+1)) + '^^'
         return ParseResult(parsed_expression, error)
 
     # Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
@@ -618,7 +651,6 @@ class Parser:
                     value=name
                 )
             else:
-                opening = self.tokenizer.col
                 self.read_next_token()  # Skip (
                 arguments = []
                 while True:
@@ -634,16 +666,25 @@ class Parser:
                         elif self.check(TokenType.RIGHT_PARENTHESIS):
                             break
                         else:
-                            error = self.tokenizer.get_current_line()
-                            error += (' ' * self.current.col)
-                            error += ('^' * len(self.current.value)) + '\n'
-                            error += 'Unexpected item'
+                            # Expected ) or , after function argument
+                            line = len(self.tokenizer.input_lines) - 1
+                            if self.current:
+                                line = self.current.line
+                            error = f'Error in line {line+1}: '
+                            error += 'Expected ) or , after '
+                            error += 'function argument\n'
+                            current_line = self.tokenizer.input_lines[line]
+                            end = len(current_line) - 1
+                            for k in range(end, -1, -1):
+                                if not current_line[k].isspace():
+                                    end = k
+                                    break
+                            error += current_line[:end+1] + '\n'
+                            error += (' ' * (end + 1)) + '^'
                             break
                     else:
                         break
                 if not error:
-                    if self.check(TokenType.COMMA):
-                        self.read_next_token()  # Skip trailing ,
                     if self.check(TokenType.RIGHT_PARENTHESIS):
                         self.read_next_token()  # Skip )
                         parsed_expression = FunctionCall(
@@ -651,14 +692,19 @@ class Parser:
                             arguments=arguments
                         )
                     else:
-                        current_line = self.tokenizer.get_current_line()
+                        # Expected ) after function arguments list
+                        line = len(self.tokenizer.input_lines) - 1
+                        if self.current:
+                            line = self.current.line
+                        error = f'Error in line {line+1}: '
+                        error += 'Expected ) after function arguments list\n'
+                        current_line = self.tokenizer.input_lines[line]
                         col = len(current_line) - 1
                         if self.current:
                             col = self.current.col
-                        error = current_line[0:col]
+                        error += current_line[:col]
                         error += ' ' + current_line[col:]
                         error += (' ' * col) + '^\n'
-                        error += 'Expected ) after function arguments list'
         elif self.check(TokenType.LEFT_PARENTHESIS):
             self.read_next_token()  # Skip (
             grouped_expression = self.parse_expression()
@@ -673,23 +719,39 @@ class Parser:
                         value=grouped_expression.parsed_expression
                     )
                 else:
-                    current_line = self.tokenizer.get_current_line()
-                    col = len(current_line) - 1
+                    # Expected ) after expression
+                    line = len(self.tokenizer.input_lines) - 1
+                    if self.current:
+                        line = self.current.line
+                    error = f'Error in line {line+1}: '
+                    error += 'Expected ) after expression\n'
+                    current_line = self.tokenizer.input_lines[line]
                     if self.current:
                         col = self.current.col
-                    error = current_line[0:col]
-                    error += ' ' + current_line[col:]
-                    error += (' ' * col) + '^\n'
-                    error += 'Expected ) after expression'
+                    else:
+                        col = len(current_line) - 1
+                        for k in range(col, -1, -1):
+                            if not current_line[k].isspace():
+                                col = k
+                                break
+                    error += current_line[:col] + ' '
+                    error += current_line[col:]
+                    error += (' ' * col) + '^'
             else:
-                current_line = self.tokenizer.get_current_line()
-                col = len(current_line) - 1
+                # Expected expression after (
+                line = len(self.tokenizer.input_lines) - 1
+                if self.current:
+                    line = self.current.line
+                error = f'Error in line {line+1}: '
+                error += 'Expected expression after (\n'
+                current_line = self.tokenizer.input_lines[line]
                 if self.current:
                     col = self.current.col
-                error = current_line[0:col]
+                else:
+                    col = len(current_line) - 1
+                error += current_line[0:col]
                 error += ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
-                error += 'Expected expression after ('
         elif self.check(TokenType.MINUS):
             self.read_next_token()  # Skip -
             atomic = self.parse_atomic()
@@ -702,25 +764,35 @@ class Parser:
                     value=atomic.parsed_expression
                 )
             else:
-                current_line = self.tokenizer.get_current_line()
-                col = len(current_line) - 1
+                # Expected expression
+                line = len(self.tokenizer.input_lines) - 1
+                if self.current:
+                    line = self.current.line
+                error = f'Error in line {line+1}: '
+                error += 'Expected expression\n'
+                current_line = self.get_token_line(self.current)
                 if self.current:
                     col = self.current.col
-                error = current_line[0:col]
+                else:
+                    col = len(current_line) - 1
+                error += current_line[0:col]
                 error += ' ' + current_line[col:]
                 error += (' ' * col) + '^\n'
-                error += 'Expected expression'
         elif self.check(TokenType.END_OF_LINE):
-            current_line = self.tokenizer.get_current_line()
+            # Unexpected end of line
+            line = len(self.tokenizer.input_lines) - 1
+            if self.current:
+                line = self.current.line
+            error = f'Error in line {line+1}: '
+            error += f'Unexpected end of line {self.tokenizer.line+1}\n'
+            current_line = self.tokenizer.input_lines[line]
             end = len(current_line) - 1
             for k in range(end, -1, -1):
                 if not current_line[k].isspace():
                     end = k
                     break
-            error = current_line[:end+1] + '\n'
+            error += current_line[:end+1] + '\n'
             error += (' ' * (end + 1)) + '^\n'
-            error += f'Unexpected end of line {self.tokenizer.line+1}'
-
         return ParseResult(parsed_expression, error)
 
 
@@ -740,24 +812,34 @@ for parse_result in parser:
                 sep='\n'
             )
             print()
+            continue
         except DivisionByZeroError as e:
-            error = parser.tokenizer.get_current_line()
-            error += (' ' * e.operator_col) + '^\n'
-            error += 'Division by zero'
-            print(error, file=stderr)
-            exit(1)
+            # Division by zero
+            error = f'Error in line {e.operator.line+1}: '
+            error += 'Division by zero\n'
+            error += parser.tokenizer.input_lines[e.operator.line]
+            error += (' ' * e.operator.col) + '^'
         except NameLookupError as e:
-            error = parser.tokenizer.get_current_line()
+            # Variable not found
+            error = f'Error in line {e.name_token.line+1}: '
+            error += f"Variable '{e.name_token.value}' not defined\n"
+            error += parser.tokenizer.input_lines[e.name_token.line]
             error += (' ' * e.name_token.col)
-            error += ('^' * len(e.name_token.value)) + '\n'
-            error += f"Variable '{e.name_token.value}' not defined"
-            print(error, file=stderr)
-            exit(1)
+            error += ('^' * len(e.name_token.value))
         except RedefiningConstantError as e:
-            error = parser.tokenizer.get_current_line()
+            # Attempting to redefine mathematical constant
+            error = f'Error in line {e.constant_token.line+1}: '
+            error += 'Attempting to redefine mathematical constant '
+            error += f"'{e.constant_token.value}'\n"
+            error += parser.tokenizer.input_lines[e.constant_token.line]
             error += (' ' * e.constant_token.col)
-            error += ('^' * len(e.constant_token.value)) + '\n'
-            error += "Attempting to redefine mathematical constant"
-            error += e.constant_token.value
-            print(error, file=stderr)
-            exit(1)
+            error += ('^' * len(e.constant_token.value))
+        except InvalidFunctionCallError as e:
+            # Invalid function call
+            error = f'Error in line {e.function_name_token.line+1}: '
+            error += f'{e.error}\n'
+            error += parser.tokenizer.input_lines[e.function_name_token.line]
+            error += ' ' * e.function_name_token.col
+            error += '^' * len(e.function_name_token.value)
+        print(error, file=stderr)
+        exit(1)
