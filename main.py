@@ -932,10 +932,11 @@ if args.file:
 else:
     while True:
         try:
-            line = input("> ") + '\n'
-            process(
-                parser=Parser(input_lines=[line]),
-                interactive=True
-            )
+            if line := input("> "):
+                line += '\n'
+                process(
+                    parser=Parser(input_lines=[line]),
+                    interactive=True
+                )
         except (EOFError, KeyboardInterrupt):
             exit(1)
