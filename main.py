@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# How to run:
-# python main.py path_to_input_file
 
 from enum import Enum
 from sys import stderr
@@ -27,7 +25,6 @@ class TokenType(Enum):
 
 
 class Token:
-    # Constructor
     def __init__(self, ttype: TokenType, value: str, line: int, col: int):
         self.ttype: TokenType = ttype
         self.value: str = value
@@ -42,9 +39,8 @@ class Token:
         return value
 
 
-# Scan input file lines to extract tokens
 NUMBERS_PATTERN = compile(r'\d+([.]\d+((e|E)(-|\+)?\d+)?)?')
-NAMES_PATTERN = compile(r'[a-zA-Z_]+\w*')
+NAMES_PATTERN = compile(r'[a-zA-Z_]\w*')
 
 
 class Tokenizer:
@@ -595,33 +591,48 @@ class Parser:
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     def parse_expression(self) -> ParseResult:
-        initial = self.parse_term()
-        error, parsed_expression = initial.error, initial.parsed_expression
-        del initial
-        if parsed_expression:
-            while self.check(TokenType.PLUS, TokenType.MINUS):
-                operator = self.consume()  # Get operator
-                right_term = self.parse_term()
-                if right_term.error:
-                    parsed_expression = None
-                    error = right_term.error
-                    break
-                elif right_term.parsed_expression:
-                    parsed_expression = Expression(
-                        lhs=parsed_expression,
-                        op=operator,
-                        rhs=right_term.parsed_expression
-                    )
-                else:
-                    # Expected expression after + or -
-                    parsed_expression = None
-                    error = f'Error in line {operator.line+1}: '
-                    error += f'Expected expression after {operator.value}\n'
-                    current_line = self.get_token_line(operator)
-                    error += current_line[:operator.col+1]
-                    error += ' ' + current_line[operator.col+1:]
-                    error += (' ' * (operator.col+1)) + '^'
-                    break
+        if self.check(
+            TokenType.MINUS, TokenType.LEFT_PARENTHESIS,
+            TokenType.NUMBER, TokenType.NAME
+        ):
+            initial = self.parse_term()
+            error, parsed_expression = initial.error, initial.parsed_expression
+            del initial
+            if parsed_expression:
+                while self.check(TokenType.PLUS, TokenType.MINUS):
+                    operator = self.consume()  # Get operator
+                    right_term = self.parse_term()
+                    if right_term.error:
+                        parsed_expression = None
+                        error = right_term.error
+                        break
+                    elif right_term.parsed_expression:
+                        parsed_expression = Expression(
+                            lhs=parsed_expression,
+                            op=operator,
+                            rhs=right_term.parsed_expression
+                        )
+                    else:
+                        # Expected expression after + or -
+                        parsed_expression = None
+                        error = f'Error in line {operator.line+1}: '
+                        error += f'Expected expression after {
+                            operator.value}\n'
+                        current_line = self.get_token_line(operator)
+                        error += current_line[:operator.col+1]
+                        error += ' ' + current_line[operator.col+1:]
+                        error += (' ' * (operator.col+1)) + '^'
+                        break
+        else:
+            parsed_expression = None
+            line = len(self.tokenizer.input_lines) - 1
+            if self.current:
+                line = self.current.line
+            error = f'Error in line {line+1}: '
+            error += 'Invalid syntax, unexpected item\n'
+            error += self.tokenizer.input_lines[self.current.line]
+            error += (' ' * self.current.col)
+            error += ('^' * len(self.current.value))
         return ParseResult(parsed_expression, error)
 
     # Term => Exponential ( ( '*' | '/' ) Exponential )*
