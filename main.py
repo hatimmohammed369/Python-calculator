@@ -7,6 +7,7 @@ from typing import override
 from abc import ABC, abstractmethod
 import math
 import argparse
+import readline
 
 
 class TokenType(Enum):
@@ -591,7 +592,7 @@ class Parser:
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     def parse_expression(self) -> ParseResult:
-        if self.check(
+        if self.current and self.check(
             TokenType.MINUS, TokenType.LEFT_PARENTHESIS,
             TokenType.NUMBER, TokenType.NAME
         ):
@@ -936,5 +937,5 @@ else:
                 parser=Parser(input_lines=[line]),
                 interactive=True
             )
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             exit(1)
