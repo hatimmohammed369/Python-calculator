@@ -228,7 +228,7 @@ class Tokenizer:
 # Statement => ( NAME '=' )? Expression END_OF_LINE
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' ) Exponential )*
-# Exponential => Unary ( '**' Unary )?
+# Exponential => Unary ( '**' Unary )*
 # Unary => ( '-' )? Primary
 # Primary => Name | Number | Grouped | FunctionCall
 # Name => NAME
@@ -341,13 +341,13 @@ class Term(ExpressionBase):
         return value
 
 
-# Exponential => Unary ( '**' Unary )?
+# Exponential => Unary ( '**' Unary )*
 class Exponential(ExpressionBase):
     def __init__(self, base, exponent):
         self.base: ExpressionBase = base
         self.exponent: ExpressionBase = exponent
 
-    # Exponential => Unary ( '**' Unary )?
+    # Exponential => Unary ( '**' Unary )*
     @override
     def evaluate(self):
         base = self.base.evaluate()
@@ -667,31 +667,36 @@ class Parser:
                     break
         return ParseResult(parsed_expression, error)
 
-    # Exponential => Unary ( '**' Unary )?
+    # Exponential => Unary ( '**' Unary )*
     def parse_exponential(self) -> ParseResult:
         initial = self.parse_unary()
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
-        if parsed_expression and self.check(TokenType.EXPONENT):
-            operator = self.consume()
-            exponent = self.parse_unary()
-            if exponent.error:
-                parsed_expression = None
-                error = exponent.error
-            elif exponent.parsed_expression:
-                parsed_expression = Exponential(
-                    base=parsed_expression,
-                    exponent=exponent.parsed_expression
-                )
-            else:
-                # Expected expression after **
-                parsed_expression = None
-                error = f'Error in line {operator.line+1}: '
-                error += 'Expected expression after **'
-                current_line = self.get_token_line(operator)
-                error += current_line[:operator.col+2]
-                error += ' ' + current_line[operator.col+1:]
-                error += (' ' * (operator.col+1)) + '^^'
+        if parsed_expression:
+            items = [parsed_expression]
+            while self.check(TokenType.EXPONENT):
+                operator = self.consume()
+                exponent = self.parse_unary()
+                if exponent.error:
+                    parsed_expression = None
+                    error = exponent.error
+                elif exponent.parsed_expression:
+                    items.append(exponent.parsed_expression)
+                else:
+                    # Expected expression after **
+                    parsed_expression = None
+                    error = f'Error in line {operator.line+1}: '
+                    error += 'Expected expression after **'
+                    current_line = self.get_token_line(operator)
+                    error += current_line[:operator.col+2]
+                    error += ' ' + current_line[operator.col+1:]
+                    error += (' ' * (operator.col+1)) + '^^'
+            if not error and len(items) > 1:
+                while len(items) >= 2:
+                    exponent = items.pop()
+                    base = items.pop()
+                    items.append(Exponential(base, exponent))
+                parsed_expression = items.pop()
         return ParseResult(parsed_expression, error)
 
     # Unary => ( '-' )? Primary
