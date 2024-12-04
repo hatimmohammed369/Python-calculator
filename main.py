@@ -231,8 +231,12 @@ class Tokenizer:
 # Statement => ( NAME '=' )? Expression END_OF_LINE
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' ) Exponential )*
-# Exponential => Atomic ( '**' Atomic )?
-# Atomic => NUMBER | NAME | '(' Expression ')' | FunctionCall | '-' Atomic
+# Exponential => Unary ( '**' Unary )?
+# Unary => ( '-' )? Primary
+# Primary => Name | Number | Grouped | FunctionCall
+# Name => NAME
+# Number => NUMBER
+# Grouped => '(' Expression ')'
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 
 
@@ -260,6 +264,7 @@ class RedefiningConstantError(Exception):
         self.constant_token: Token = constant_token
 
 
+# Statement => ( NAME '=' )? Expression END_OF_LINE
 class Statement(ExpressionBase):
     def __init__(self, name_token: Token, expression: ExpressionBase):
         self.name_token: Token = name_token
@@ -284,6 +289,7 @@ class Statement(ExpressionBase):
         return value
 
 
+# Expression => Term ( ( '+' | '-' ) Term )*
 class Expression(ExpressionBase):
     def __init__(self, lhs, op, rhs):
         self.left_term: ExpressionBase = lhs
@@ -310,6 +316,7 @@ class DivisionByZeroError(Exception):
         self.operator = operator
 
 
+# Term => Exponential ( ( '*' | '/' ) Exponential )*
 class Term(ExpressionBase):
     def __init__(self, lhs, op, rhs):
         self.left_exponential: ExpressionBase = lhs
@@ -325,7 +332,7 @@ class Term(ExpressionBase):
             return left * right
         else:
             if right:
-                return left / right
+                return float(left) / float(right)
             else:
                 raise DivisionByZeroError(operator=self.operator)
 
@@ -337,12 +344,13 @@ class Term(ExpressionBase):
         return value
 
 
+# Exponential => Unary ( '**' Unary )?
 class Exponential(ExpressionBase):
     def __init__(self, base, exponent):
         self.base: ExpressionBase = base
         self.exponent: ExpressionBase = exponent
 
-    # Exponential => Atomic ( '**' Atomic )?
+    # Exponential => Unary ( '**' Unary )?
     @override
     def evaluate(self):
         base = self.base.evaluate()
@@ -354,11 +362,37 @@ class Exponential(ExpressionBase):
         return f'{self.base} ** {self.exponent}'
 
 
-class AtomicType(Enum):
-    NUMBER = 1
-    NAME = 2
-    GROUPED_EXPRESSION = 3
-    FUNCTION_CALL = 4
+# Unary => ( '-' )? Primary
+class Unary(ExpressionBase):
+    def __init__(self, sign_token: Token, expression: ExpressionBase):
+        self.sign_token = sign_token
+        self.expression = expression
+
+    # Unary => ( '-' )? Primary
+    @override
+    def evaluate(self):
+        value = self.expression.evaluate()
+        if self.sign_token:
+            value *= -1
+        return value
+
+    @override
+    def __repr__(self) -> str:
+        value = f'{self.expression}'
+        if self.sign_token:
+            value = f'-{value}'
+        return value
+
+
+# Primary => Name | Number | Grouped | FunctionCall
+class Primary(ExpressionBase):
+    @override
+    def evaluate(self):
+        pass
+
+    @override
+    def __repr__(self) -> str:
+        pass
 
 
 class NameLookupError(Exception):
@@ -366,42 +400,55 @@ class NameLookupError(Exception):
         self.name_token = name_token
 
 
-class Atomic(ExpressionBase):
-    def __init__(self, is_signed: bool, atomic_type: AtomicType, value):
-        self.is_signed: bool = is_signed
-        self.atomic_type: AtomicType = atomic_type
-        self.value: Token | ExpressionBase = value
+# Name => NAME
+class Name(Primary):
+    def __init__(self, name_token: Token):
+        self.name = name_token
 
-    # Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
+    # Name => NAME
     @override
     def evaluate(self):
-        match self.atomic_type:
-            case AtomicType.NUMBER:
-                if '.' in self.value.value:
-                    value = float(self.value.value)
-                else:
-                    value = int(self.value.value)
-            case AtomicType.NAME:
-                try:
-                    value = names[self.value.value]
-                except KeyError:
-                    raise NameLookupError(name_token=self.value)
-            case AtomicType.GROUPED_EXPRESSION:
-                value = self.value.evaluate()
-        if self.is_signed:
-            value *= -1
-        return value
+        try:
+            return names[self.name.value]
+        except KeyError:
+            raise NameLookupError(name_token=self.name)
 
     @override
     def __repr__(self) -> str:
-        match self.atomic_type:
-            case AtomicType.NUMBER | AtomicType.NAME:
-                value = f'{self.value.value}'
-            case AtomicType.GROUPED_EXPRESSION:
-                value = f'({self.value})'
-        if self.is_signed:
-            value = f'-{value}'
-        return value
+        return self.name.value
+
+
+# Number => NUMBER
+class Number(Primary):
+    def __init__(self, number_token: Token):
+        self.number = number_token
+
+    # Number => NAME
+    @override
+    def evaluate(self):
+        if '.' in self.number.value:
+            return float(self.number.value)
+        else:
+            return int(self.number.value)
+
+    @override
+    def __repr__(self) -> str:
+        return self.number.value
+
+
+# Grouped => '(' Expression ')'
+class Grouped(Primary):
+    def __init__(self, expression: ExpressionBase):
+        self.expression = expression
+
+    # Grouped => '(' Expression ')'
+    @override
+    def evaluate(self):
+        return self.expression.evaluate()
+
+    @override
+    def __repr__(self):
+        return f'({self.expression})'
 
 
 class InvalidFunctionCallError(Exception):
@@ -414,10 +461,9 @@ class InvalidFunctionCallError(Exception):
         self.error = exception_error_message
 
 
-class FunctionCall(Atomic):
+# FunctionCall => NAME '(' ( Expression ',' )* ')'
+class FunctionCall:
     def __init__(self, function_name: Token, arguments: list[ExpressionBase]):
-        self.is_signed = False
-        self.atomic_type = AtomicType.FUNCTION_CALL
         self.value = function_name
         self.arguments = arguments
 
@@ -598,7 +644,7 @@ class Parser:
                         rhs=right_exponential.parsed_expression
                     )
                 else:
-                    # Expected expression after + or -
+                    # Expected expression after * or /
                     parsed_expression = None
                     error = f'Error in line {operator.line+1}: '
                     error += f'Expected expression after {operator.value}\n'
@@ -609,14 +655,14 @@ class Parser:
                     break
         return ParseResult(parsed_expression, error)
 
-    # Exponential => Atomic ( '**' Atomic )?
+    # Exponential => Unary ( '**' Unary )?
     def parse_exponential(self) -> ParseResult:
-        initial = self.parse_atomic()
+        initial = self.parse_unary()
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
         if parsed_expression and self.check(TokenType.EXPONENT):
             operator = self.consume()
-            exponent = self.parse_atomic()
+            exponent = self.parse_unary()
             if exponent.error:
                 parsed_expression = None
                 error = exponent.error
@@ -636,152 +682,53 @@ class Parser:
                 error += (' ' * (operator.col+1)) + '^^'
         return ParseResult(parsed_expression, error)
 
-    # Atomic => NUMBER | NAME | '(' Expression ')' | '-' Atomic
-    def parse_atomic(self) -> ParseResult:
+    # Unary => ( '-' )? Primary
+    def parse_unary(self) -> ParseResult:
+        if self.check(TokenType.MINUS):
+            sign = self.consume()
+        else:
+            sign = None
+        primary = self.parse_primary()
+        error, parsed_expression = primary.error, primary.parsed_expression
+        del primary
+        if not error:
+            if sign and not parsed_expression:
+                # Expected expression after -
+                current_line = self.tokenizer.input_lines[sign.line]
+                error += f'Error in line {sign.line}: '
+                error += 'Expected expression after -\n'
+                error += current_line[:sign.col+1]
+                if not current_line[sign.col+1:sign.col+2].isspace():
+                    error += ' '
+                error += current_line[sign.col:]
+                error += ' ' * sign.col + '^'
+            elif parsed_expression and sign:
+                parsed_expression = Unary(
+                    sign_token=sign,
+                    expression=parsed_expression
+                )
+        return ParseResult(parsed_expression, error)
+
+    # Primary => Name | Number | Grouped | FunctionCall
+    def parse_primary(self) -> ParseResult:
         parsed_expression = None
         error = None
         if self.check(TokenType.NUMBER):
-            parsed_expression = Atomic(
-                is_signed=False,
-                atomic_type=AtomicType.NUMBER,
-                value=self.consume()
-            )
+            parsed_expression = Number(number_token=self.consume())
         elif self.check(TokenType.NAME):
             name = self.consume()
             if not self.check(TokenType.LEFT_PARENTHESIS):
-                parsed_expression = Atomic(
-                    is_signed=False,
-                    atomic_type=AtomicType.NAME,
-                    value=name
-                )
+                parsed_expression = Name(name_token=name)
             else:
                 self.read_next_token()  # Skip (
-                arguments = []
-                while True:
-                    expression = self.parse_expression()
-                    if expression.error:
-                        error = expression.error
-                        break
-                    elif expression.parsed_expression:
-                        arguments.append(expression.parsed_expression)
-                        if self.check(TokenType.COMMA):
-                            self.read_next_token()  # Skip ,
-                            continue
-                        elif self.check(TokenType.RIGHT_PARENTHESIS):
-                            break
-                        else:
-                            # Expected ) or , after function argument
-                            line = len(self.tokenizer.input_lines) - 1
-                            if self.current:
-                                line = self.current.line
-                            error = f'Error in line {line+1}: '
-                            error += 'Expected ) or , after '
-                            error += 'function argument\n'
-                            current_line = self.tokenizer.input_lines[line]
-                            end = len(current_line) - 1
-                            for k in range(end, -1, -1):
-                                if not current_line[k].isspace():
-                                    end = k
-                                    break
-                            error += current_line[:end+1] + '\n'
-                            error += (' ' * (end + 1)) + '^'
-                            break
-                    else:
-                        break
-                if not error:
-                    if self.check(TokenType.RIGHT_PARENTHESIS):
-                        self.read_next_token()  # Skip )
-                        parsed_expression = FunctionCall(
-                            function_name=name,
-                            arguments=arguments
-                        )
-                    else:
-                        # Expected ) after function arguments list
-                        line = len(self.tokenizer.input_lines) - 1
-                        if self.current:
-                            line = self.current.line
-                        error = f'Error in line {line+1}: '
-                        error += 'Expected ) after function arguments list\n'
-                        current_line = self.tokenizer.input_lines[line]
-                        col = len(current_line) - 1
-                        if self.current:
-                            col = self.current.col
-                        error += current_line[:col]
-                        error += ' ' + current_line[col:]
-                        error += (' ' * col) + '^'
+                function_call = self.parse_function_call(function_name=name)
+                error = function_call.error
+                parsed_expression = function_call.parsed_expression
+                del function_call
         elif self.check(TokenType.LEFT_PARENTHESIS):
-            self.read_next_token()  # Skip (
-            grouped_expression = self.parse_expression()
-            if grouped_expression.error:
-                error = grouped_expression.error
-            elif grouped_expression.parsed_expression:
-                if self.check(TokenType.RIGHT_PARENTHESIS):
-                    self.read_next_token()  # Skip )
-                    parsed_expression = Atomic(
-                        is_signed=False,
-                        atomic_type=AtomicType.GROUPED_EXPRESSION,
-                        value=grouped_expression.parsed_expression
-                    )
-                else:
-                    # Expected ) after expression
-                    line = len(self.tokenizer.input_lines) - 1
-                    if self.current:
-                        line = self.current.line
-                    error = f'Error in line {line+1}: '
-                    error += 'Expected ) after expression\n'
-                    current_line = self.tokenizer.input_lines[line]
-                    if self.current:
-                        col = self.current.col
-                    else:
-                        col = len(current_line) - 1
-                        for k in range(col, -1, -1):
-                            if not current_line[k].isspace():
-                                col = k
-                                break
-                    error += current_line[:col] + ' '
-                    error += current_line[col:]
-                    error += (' ' * col) + '^'
-            else:
-                # Expected expression after (
-                line = len(self.tokenizer.input_lines) - 1
-                if self.current:
-                    line = self.current.line
-                error = f'Error in line {line+1}: '
-                error += 'Expected expression after (\n'
-                current_line = self.tokenizer.input_lines[line]
-                if self.current:
-                    col = self.current.col
-                else:
-                    col = len(current_line) - 1
-                error += current_line[0:col]
-                error += ' ' + current_line[col:]
-                error += (' ' * col) + '^'
-        elif self.check(TokenType.MINUS):
-            self.read_next_token()  # Skip -
-            atomic = self.parse_atomic()
-            if atomic.error:
-                error = atomic.error
-            elif atomic.parsed_expression:
-                parsed_expression = Atomic(
-                    is_signed=True,
-                    atomic_type=atomic.parsed_expression.atomic_type,
-                    value=atomic.parsed_expression
-                )
-            else:
-                # Expected expression
-                line = len(self.tokenizer.input_lines) - 1
-                if self.current:
-                    line = self.current.line
-                error = f'Error in line {line+1}: '
-                error += 'Expected expression\n'
-                current_line = self.get_token_line(self.current)
-                if self.current:
-                    col = self.current.col
-                else:
-                    col = len(current_line) - 1
-                error += current_line[0:col]
-                error += ' ' + current_line[col:]
-                error += (' ' * col) + '^'
+            grouped = self.parse_grouped_expression()
+            error, parsed_expression = grouped.error, grouped.parsed_expression
+            del grouped
         elif self.check(TokenType.END_OF_LINE):
             # Unexpected end of line
             line = len(self.tokenizer.input_lines) - 1
@@ -797,6 +744,114 @@ class Parser:
                     break
             error += current_line[:end+1] + '\n'
             error += (' ' * (end + 1)) + '^'
+        return ParseResult(parsed_expression, error)
+
+    # Grouped => '(' Expression ')'
+    def parse_grouped_expression(self) -> ParseResult:
+        parsed_expression = None
+        error = None
+        self.read_next_token()  # Skip (
+        grouped_expression = self.parse_expression()
+        if grouped_expression.error:
+            error = grouped_expression.error
+        elif grouped_expression.parsed_expression:
+            if self.check(TokenType.RIGHT_PARENTHESIS):
+                self.read_next_token()  # Skip )
+                parsed_expression = Grouped(
+                    expression=grouped_expression.parsed_expression
+                )
+            else:
+                # Expected ) after expression
+                line = len(self.tokenizer.input_lines) - 1
+                if self.current:
+                    line = self.current.line
+                error = f'Error in line {line+1}: '
+                error += 'Expected ) after expression\n'
+                current_line = self.tokenizer.input_lines[line]
+                if self.current:
+                    col = self.current.col
+                else:
+                    col = len(current_line) - 1
+                    for k in range(col, -1, -1):
+                        if not current_line[k].isspace():
+                            col = k
+                            break
+                error += current_line[:col] + ' '
+                error += current_line[col:]
+                error += (' ' * col) + '^'
+        else:
+            # Expected expression after (
+            line = len(self.tokenizer.input_lines) - 1
+            if self.current:
+                line = self.current.line
+            error = f'Error in line {line+1}: '
+            error += 'Expected expression after (\n'
+            current_line = self.tokenizer.input_lines[line]
+            if self.current:
+                col = self.current.col
+            else:
+                col = len(current_line) - 1
+            error += current_line[0:col]
+            error += ' ' + current_line[col:]
+            error += (' ' * col) + '^'
+        return ParseResult(parsed_expression, error)
+
+    # FunctionCall => NAME '(' ( Expression ',' )* ')'
+    def parse_function_call(self, function_name: Token) -> ParseResult:
+        parsed_expression = None
+        error = None
+        arguments = []
+        while True:
+            expression = self.parse_expression()
+            if expression.error:
+                error = expression.error
+                break
+            elif expression.parsed_expression:
+                arguments.append(expression.parsed_expression)
+                if self.check(TokenType.COMMA):
+                    self.read_next_token()  # Skip ,
+                    continue
+                elif self.check(TokenType.RIGHT_PARENTHESIS):
+                    break
+                else:
+                    # Expected ) or , after function argument
+                    line = len(self.tokenizer.input_lines) - 1
+                    if self.current:
+                        line = self.current.line
+                    error = f'Error in line {line+1}: '
+                    error += 'Expected ) or , after '
+                    error += 'function argument\n'
+                    current_line = self.tokenizer.input_lines[line]
+                    end = len(current_line) - 1
+                    for k in range(end, -1, -1):
+                        if not current_line[k].isspace():
+                            end = k
+                            break
+                    error += current_line[:end+1] + '\n'
+                    error += (' ' * (end + 1)) + '^'
+                    break
+            else:
+                break
+        if not error:
+            if self.check(TokenType.RIGHT_PARENTHESIS):
+                self.read_next_token()  # Skip )
+                parsed_expression = FunctionCall(
+                    function_name, arguments
+                )
+            else:
+                # Expected ) after function arguments list
+                line = len(self.tokenizer.input_lines) - 1
+                if self.current:
+                    line = self.current.line
+                error = f'Error in line {line+1}: '
+                error += 'Expected ) after function arguments list\n'
+                current_line = self.tokenizer.input_lines[line]
+                col = len(current_line) - 1
+                if self.current:
+                    col = self.current.col
+                error += current_line[:col]
+                error += ' ' + current_line[col:]
+                error += (' ' * col) + '^'
         return ParseResult(parsed_expression, error)
 
 
