@@ -23,6 +23,7 @@ class TokenType(Enum):
     EQUAL = 10
     NAME = 11
     COMMA = 12
+    DOUBLE_SLASH = 13
 
 
 class Token:
@@ -178,12 +179,20 @@ class Tokenizer:
                                         col=self.col
                                     )
                             case '/':
-                                read_token = Token(
-                                    ttype=TokenType.SLASH,
-                                    value='/',
-                                    line=self.line,
-                                    col=self.col
-                                )
+                                if current_line[self.col:self.col+2] == '//':
+                                    read_token = Token(
+                                        ttype=TokenType.DOUBLE_SLASH,
+                                        value='//',
+                                        line=self.line,
+                                        col=self.col
+                                    )
+                                else:
+                                    read_token = Token(
+                                        ttype=TokenType.SLASH,
+                                        value='/',
+                                        line=self.line,
+                                        col=self.col
+                                    )
                             case '(':
                                 read_token = Token(
                                     ttype=TokenType.LEFT_PARENTHESIS,
@@ -329,7 +338,12 @@ class Term(ExpressionBase):
             return left * right
         else:
             if right:
-                return float(left) / float(right)
+                if self.operator.ttype == TokenType.DOUBLE_SLASH:
+                    # Integer division
+                    return left // right
+                else:
+                    # Float division
+                    return left / right
             else:
                 raise DivisionByZeroError(operator=self.operator)
 
@@ -642,7 +656,9 @@ class Parser:
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
         if parsed_expression:
-            while self.check(TokenType.STAR, TokenType.SLASH):
+            while self.check(
+                TokenType.STAR, TokenType.SLASH, TokenType.DOUBLE_SLASH
+            ):
                 operator = self.consume()  # Get operator
                 right_exponential = self.parse_exponential()
                 if right_exponential.error:
