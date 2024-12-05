@@ -24,6 +24,7 @@ class TokenType(Enum):
     NAME = 11
     COMMA = 12
     DOUBLE_SLASH = 13
+    PERCENT = 14
 
 
 class Token:
@@ -221,6 +222,13 @@ class Tokenizer:
                                     line=self.line,
                                     col=self.col
                                 )
+                            case '%':
+                                read_token = Token(
+                                    ttype=TokenType.PERCENT,
+                                    value='%',
+                                    line=self.line,
+                                    col=self.col
+                                )
                     if read_token:
                         self.col += len(read_token.value)
                         return read_token
@@ -236,7 +244,7 @@ class Tokenizer:
 # Context-Free Grammar
 # Statement => ( NAME '=' )? Expression END_OF_LINE
 # Expression => Term ( ( '+' | '-' ) Term )*
-# Term => Exponential ( ( '*' | '/' ) Exponential )*
+# Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
 # Exponential => Unary ( '**' Unary )*
 # Unary => ( '-' )? Primary
 # Primary => Name | Number | Grouped | FunctionCall
@@ -307,10 +315,7 @@ class Expression(ExpressionBase):
     def evaluate(self):
         left = self.left_term.evaluate()
         right = self.right_term.evaluate()
-        if self.operator.value == '+':
-            return left + right
-        else:
-            return left - right
+        return eval(f'{left}{self.operator.value}{right}')
 
     @override
     def __repr__(self) -> str:
@@ -322,28 +327,34 @@ class DivisionByZeroError(Exception):
         self.operator = operator
 
 
-# Term => Exponential ( ( '*' | '/' ) Exponential )*
+class ZeroModulusError(Exception):
+    def __init__(self, operator: Token):
+        self.operator = operator
+
+
+# Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
 class Term(ExpressionBase):
     def __init__(self, lhs, op, rhs):
         self.left_exponential: ExpressionBase = lhs
         self.operator: Token = op
         self.right_exponential: ExpressionBase = rhs
 
-    # Term => Exponential ( ( '*' | '/' ) Exponential )*
+    # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
     @override
     def evaluate(self):
         left = self.left_exponential.evaluate()
         right = self.right_exponential.evaluate()
-        if self.operator.value == '*':
+        if self.operator.ttype == TokenType.STAR:
             return left * right
-        else:
+        elif self.operator.ttype == TokenType.PERCENT:
             if right:
-                if self.operator.ttype == TokenType.DOUBLE_SLASH:
-                    # Integer division
-                    return left // right
-                else:
-                    # Float division
-                    return left / right
+                return left % right
+            else:
+                raise ZeroModulusError(operator=self.operator)
+        else:
+            # Division
+            if right:
+                return eval(f'{left}{self.operator.value}{right}')
             else:
                 raise DivisionByZeroError(operator=self.operator)
 
@@ -650,14 +661,15 @@ class Parser:
             error += ('^' * len(self.current.value))
         return ParseResult(parsed_expression, error)
 
-    # Term => Exponential ( ( '*' | '/' ) Exponential )*
+    # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
     def parse_term(self) -> ParseResult:
         initial = self.parse_exponential()
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
         if parsed_expression:
             while self.check(
-                TokenType.STAR, TokenType.SLASH, TokenType.DOUBLE_SLASH
+                TokenType.STAR, TokenType.SLASH,
+                TokenType.DOUBLE_SLASH, TokenType.PERCENT
             ):
                 operator = self.consume()  # Get operator
                 right_exponential = self.parse_exponential()
@@ -909,6 +921,12 @@ def process(parser: Parser, interactive: bool):
                 # Division by zero
                 error = f'Error in line {e.operator.line+1}: '
                 error += 'Division by zero\n'
+                error += parser.tokenizer.input_lines[e.operator.line]
+                error += (' ' * e.operator.col) + '^'
+            except ZeroModulusError as e:
+                # Integer modulo by zero
+                error = f'Error in line {e.operator.line+1}: '
+                error += 'Integer modulo by zero\n'
                 error += parser.tokenizer.input_lines[e.operator.line]
                 error += (' ' * e.operator.col) + '^'
             except NameLookupError as e:
