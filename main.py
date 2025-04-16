@@ -602,63 +602,45 @@ class Parser:
         expression = self.parse_expression()
         if not is_assignment:
             return expression
-        else:
-            error = expression.error
-            parsed_expression = expression.parsed_expression
-            del expression
-            if error:
-                parsed_expression = None
-            elif parsed_expression:
-                parsed_expression = Statement(
-                    name_token=name,
-                    expression=parsed_expression
-                )
-            return ParseResult(parsed_expression, error)
+        error = expression.error
+        parsed_expression = expression.parsed_expression
+        del expression
+        if error:
+            parsed_expression = None
+        elif parsed_expression:
+            parsed_expression = Statement(
+                name_token=name,
+                expression=parsed_expression
+            )
+        return ParseResult(parsed_expression, error)
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     def parse_expression(self) -> ParseResult:
-        if self.current and self.check(
-            TokenType.MINUS, TokenType.LEFT_PARENTHESIS,
-            TokenType.NUMBER, TokenType.NAME
-        ):
-            initial = self.parse_term()
-            error, parsed_expression = initial.error, initial.parsed_expression
-            del initial
-            if parsed_expression:
-                while self.check(TokenType.PLUS, TokenType.MINUS):
-                    operator = self.consume()  # Get operator
-                    right_term = self.parse_term()
-                    if right_term.error:
-                        parsed_expression = None
-                        error = right_term.error
-                        break
-                    elif right_term.parsed_expression:
-                        parsed_expression = Expression(
-                            lhs=parsed_expression,
-                            op=operator,
-                            rhs=right_term.parsed_expression
-                        )
-                    else:
-                        # Expected expression after + or -
-                        parsed_expression = None
-                        error = f'Error in line {operator.line+1}: '
-                        error += f'Expected expression after {
-                            operator.value}\n'
-                        current_line = self.get_token_line(operator)
-                        error += current_line[:operator.col+1]
-                        error += ' ' + current_line[operator.col+1:]
-                        error += (' ' * (operator.col+1)) + '^'
-                        break
-        else:
-            parsed_expression = None
-            line = len(self.tokenizer.input_lines) - 1
-            if self.current:
-                line = self.current.line
-            error = f'Error in line {line+1}: '
-            error += 'Invalid syntax, unexpected item\n'
-            error += self.tokenizer.input_lines[self.current.line]
-            error += (' ' * self.current.col)
-            error += ('^' * len(self.current.value))
+        initial = self.parse_term()
+        error, parsed_expression = initial.error, initial.parsed_expression
+        del initial
+        if parsed_expression:
+            while not error and self.check(TokenType.PLUS, TokenType.MINUS):
+                operator = self.consume()  # Get operator
+                right_term = self.parse_term()
+                if right_term.error:
+                    parsed_expression = None
+                    error = right_term.error
+                elif right_term.parsed_expression:
+                    parsed_expression = Expression(
+                        lhs=parsed_expression,
+                        op=operator,
+                        rhs=right_term.parsed_expression
+                    )
+                else:
+                    # Expected expression after + or -
+                    parsed_expression = None
+                    error = f'Error in line {operator.line+1}: '
+                    error += f'Expected expression after {operator.value}\n'
+                    current_line = self.get_token_line(operator)
+                    error += current_line[:operator.col+1]
+                    error += ' ' + current_line[operator.col+1:]
+                    error += (' ' * (operator.col+1)) + '^'
         return ParseResult(parsed_expression, error)
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
@@ -667,7 +649,7 @@ class Parser:
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
         if parsed_expression:
-            while self.check(
+            while not error and self.check(
                 TokenType.STAR, TokenType.SLASH,
                 TokenType.DOUBLE_SLASH, TokenType.PERCENT
             ):
@@ -676,7 +658,6 @@ class Parser:
                 if right_exponential.error:
                     parsed_expression = None
                     error = right_exponential.error
-                    break
                 elif right_exponential.parsed_expression:
                     parsed_expression = Term(
                         lhs=parsed_expression,
@@ -692,7 +673,6 @@ class Parser:
                     error += current_line[:operator.col+1]
                     error += ' ' + current_line[operator.col+1:]
                     error += (' ' * (operator.col+1)) + '^'
-                    break
         return ParseResult(parsed_expression, error)
 
     # Exponential => Unary ( '**' Unary )*
@@ -702,7 +682,7 @@ class Parser:
         del initial
         if parsed_expression:
             items = [parsed_expression]
-            while self.check(TokenType.EXPONENT):
+            while not error and self.check(TokenType.EXPONENT):
                 operator = self.consume()
                 exponent = self.parse_unary()
                 if exponent.error:
@@ -776,13 +756,23 @@ class Parser:
             del grouped
         elif self.check(TokenType.END_OF_LINE):
             # Unexpected end of line
-            line = len(self.tokenizer.input_lines) - 1
-            if self.current:
-                line = self.current.line
+            line = self.current.line
             error = f'Error in line {line+1}: '
-            error += f'Unexpected end of line {self.tokenizer.line+1}\n'
+            error += f'Unexpected end of line {line+1}\n'
             current_line = self.tokenizer.input_lines[line]
             end = len(current_line) - 1
+            for k in range(end, -1, -1):
+                if not current_line[k].isspace():
+                    end = k
+                    break
+            error += current_line[:end+1] + '\n'
+            error += (' ' * (end + 1)) + '^'
+        elif self.current:
+            # Unexpected item
+            line = self.current.line
+            error = f'Error in line {line+1}: Unexpected item\n'
+            current_line = self.tokenizer.input_lines[line]
+            end = self.current.col
             for k in range(end, -1, -1):
                 if not current_line[k].isspace():
                     end = k
@@ -846,11 +836,10 @@ class Parser:
         parsed_expression = None
         error = None
         arguments = []
-        while True:
+        while not error:
             expression = self.parse_expression()
             if expression.error:
                 error = expression.error
-                break
             elif expression.parsed_expression:
                 arguments.append(expression.parsed_expression)
                 if self.check(TokenType.COMMA):
@@ -874,7 +863,6 @@ class Parser:
                             break
                     error += current_line[:end+1] + '\n'
                     error += (' ' * (end + 1)) + '^'
-                    break
             else:
                 break
         if not error:
