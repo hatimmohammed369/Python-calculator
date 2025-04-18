@@ -486,25 +486,25 @@ class InvalidFunctionCallError(Exception):
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 class FunctionCall:
     def __init__(self, function_name: Token, arguments: list[ExpressionBase]):
-        self.value = function_name
+        self.function_name = function_name
         self.arguments = arguments
 
     # FunctionCall => NAME '(' ( Expression ',' )* ')'
     @override
     def evaluate(self):
-        function = eval(f'math.{self.value.value}')
+        function = eval(f'math.{self.function_name.value}')
         arguments = [argument.evaluate() for argument in self.arguments]
         try:
             return function(*arguments)
         except TypeError as e:
             raise InvalidFunctionCallError(
-                function_name_token=self.value,
+                function_name_token=self.function_name,
                 exception_error_message=str(e).replace('math.', 'Function ')
             )
 
     @override
     def __repr__(self) -> str:
-        value = self.value.value + '('
+        value = self.function_name.value + '('
         for argument in self.arguments[:-1]:
             value += f'{argument}, '
         value += f'{self.arguments[-1]})'
