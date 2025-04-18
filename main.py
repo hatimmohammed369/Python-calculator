@@ -727,7 +727,7 @@ class Parser:
                     error += ' '
                 error += current_line[sign.col:]
                 error += ' ' * sign.col + '^'
-            elif parsed_expression and sign:
+            elif parsed_expression:
                 parsed_expression = Unary(
                     sign_token=sign,
                     expression=parsed_expression
