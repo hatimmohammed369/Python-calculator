@@ -899,7 +899,6 @@ def process(parser: Parser, interactive: bool):
         elif parsed_expression:
             try:
                 print(
-                    parsed_expression,
                     parsed_expression.evaluate(),
                     sep='\n'
                 )
