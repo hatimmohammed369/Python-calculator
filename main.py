@@ -254,13 +254,13 @@ class Tokenizer:
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 
 
-MATHEMATICAL_CONSTANTS = {'PI', 'E', 'TAU', 'INFINITY', 'NaN'}
+MATHEMATICAL_CONSTANTS = {'pi', 'e', 'tau', 'infinity', 'nan'}
 names: dict[str, float] = {}
-names['PI'] = math.pi
-names['E'] = math.e
-names['TAU'] = math.tau
-names['INFINITY'] = math.inf
-names['NaN'] = math.nan
+names['pi'] = math.pi
+names['e'] = math.e
+names['tau'] = math.tau
+names['infinity'] = math.inf
+names['nan'] = math.nan
 
 
 class ExpressionBase(ABC):
