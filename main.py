@@ -11,7 +11,8 @@ import readline
 
 
 class TokenType(Enum):
-    NUMBER = 1
+    INTEGER = 0
+    FLOAT = 0
     PLUS = 2
     MINUS = 3
     STAR = 4
@@ -136,7 +137,10 @@ class Tokenizer:
                     read_token = None
                     if number := NUMBERS_PATTERN.match(current_line, self.col):
                         read_token = Token(
-                            ttype=TokenType.NUMBER,
+                            ttype=(
+                                TokenType.FLOAT if number.group(1)
+                                else TokenType.INTEGER
+                            ),
                             value=number.group(),
                             line=self.line,
                             col=self.col
@@ -249,7 +253,7 @@ class Tokenizer:
 # Unary => ( '-' )? Primary
 # Primary => Name | Number | Grouped | FunctionCall
 # Name => NAME
-# Number => NUMBER
+# Number => INTEGER | FLOAT
 # Grouped => '(' Expression ')'
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 
@@ -440,18 +444,19 @@ class Name(Primary):
         return self.name.value
 
 
-# Number => NUMBER
+# Number => INTEGER | FLOAT
 class Number(Primary):
     def __init__(self, number_token: Token):
-        self.number = number_token
+        self.number: Token = number_token
 
     # Number => NAME
     @override
     def evaluate(self):
-        if '.' in self.number.value:
-            return float(self.number.value)
-        else:
-            return int(self.number.value)
+        match self.number.ttype:
+            case TokenType.INTEGER:
+                return int(self.number.value)
+            case TokenType.FLOAT:
+                return float(self.number.value)
 
     @override
     def __repr__(self) -> str:
@@ -738,7 +743,7 @@ class Parser:
     def parse_primary(self) -> ParseResult:
         parsed_expression = None
         error = None
-        if self.check(TokenType.NUMBER):
+        if self.check(TokenType.INTEGER, TokenType.FLOAT):
             parsed_expression = Number(number_token=self.consume())
         elif self.check(TokenType.NAME):
             name = self.consume()
