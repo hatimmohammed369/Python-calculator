@@ -42,7 +42,7 @@ class Token:
         return value
 
 
-NUMBERS_PATTERN = compile(r'\d+([.]\d+((e|E)(-|\+)?\d+)?)?')
+NUMBERS_PATTERN = compile(r'\d+(\.\d+)?([Ee][+-]?\d+)?')
 NAMES_PATTERN = compile(r'[a-zA-Z_]\w*')
 
 
