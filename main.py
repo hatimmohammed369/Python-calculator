@@ -7,6 +7,7 @@ from typing import override
 from abc import ABC, abstractmethod
 import math
 import argparse
+import operator
 import readline
 
 
@@ -277,6 +278,16 @@ OPERATORS_MAP = {
     TokenType.PERCENT: operator.mod,
 }
 
+OPERATORS_STRINGS = {
+    TokenType.PLUS: '+',
+    TokenType.MINUS: '-',
+    TokenType.STAR: '*',
+    TokenType.SLASH: '/',
+    TokenType.EXPONENT: '**',
+    TokenType.DOUBLE_SLASH: '//',
+    TokenType.PERCENT: '%',
+}
+
 
 class ExpressionAST(ABC):
     @abstractmethod
@@ -337,19 +348,15 @@ class Expression(ExpressionAST):
         value = self.terms[0].evaluate()
         for i in range(1, len(self.terms)):
             term = self.terms[i].evaluate()
-            match self.operators[i-1]:
-                case TokenType.PLUS:
-                    value += term
-                case TokenType.MINUS:
-                    value -= term
+            op = OPERATORS_MAP[self.operators[i-1]]
+            value = op(value, term)
         return value
 
     @override
     def __str__(self) -> str:
         terms = [term.evaluate() for term in self.terms]
         operators = [
-            '+' if op == TokenType.PLUS
-            else '-'
+            OPERATORS_STRINGS[op]
             for op in self.operators
         ] + ['']
         return ''.join(
