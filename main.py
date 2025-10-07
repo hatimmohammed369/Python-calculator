@@ -446,20 +446,28 @@ class Term(ExpressionAST):
 
 # Exponential => Unary ( '**' Unary )*
 class Exponential(ExpressionAST):
-    def __init__(self, base, exponent):
-        self.base: ExpressionAST = base
-        self.exponent: ExpressionAST = exponent
+    def __init__(self, unaries: list[ExpressionAST]):
+        self.unaries: list[ExpressionAST] = unaries
 
     # Exponential => Unary ( '**' Unary )*
     @override
     def evaluate(self):
-        base = self.base.evaluate()
-        exponent = self.exponent.evaluate()
-        return base ** exponent
+        value = self.unaries[-1].evaluate()
+        for unary in self.unaries[len(self.unaries)-2::-1]:
+            unary = unary.evaluate()
+            value = unary ** value
+        return value
 
     @override
+    def __str__(self) -> str:
+        return '**'.join(str(unary) for unary in self.unaries)
+
     def __repr__(self) -> str:
-        return f'{self.base} ** {self.exponent}'
+        unaries = [
+            repr(unary)
+            for unary in self.unaries
+        ]
+        return f'Exponential(unaries={unaries})'
 
 
 # Unary => ( '-' )? Primary
@@ -768,7 +776,7 @@ class Parser:
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
         if parsed_expression:
-            items = [parsed_expression]
+            items: list[ExpressionAST] = [parsed_expression]
             while not error and self.check(TokenType.EXPONENT):
                 operator = self.consume()
                 exponent = self.parse_unary()
@@ -787,11 +795,7 @@ class Parser:
                     error += ' ' + current_line[operator.col+1:]
                     error += (' ' * (operator.col+1)) + '^^'
             if not error and len(items) > 1:
-                while len(items) >= 2:
-                    exponent = items.pop()
-                    base = items.pop()
-                    items.append(Exponential(base, exponent))
-                parsed_expression = items.pop()
+                parsed_expression = Exponential(unaries=items)
         return ParseResult(parsed_expression, error)
 
     # Unary => ( '-' )? Primary
