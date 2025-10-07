@@ -267,6 +267,17 @@ names['infinity'] = math.inf
 names['nan'] = math.nan
 
 
+OPERATORS_MAP = {
+    TokenType.PLUS: operator.add,
+    TokenType.MINUS: operator.sub,
+    TokenType.STAR: operator.mul,
+    TokenType.SLASH: operator.div,
+    TokenType.EXPONENT: operator.pow,
+    TokenType.DOUBLE_SLASH: operator.floordiv,
+    TokenType.PERCENT: operator.mod,
+}
+
+
 class ExpressionAST(ABC):
     @abstractmethod
     def evaluate(self):
