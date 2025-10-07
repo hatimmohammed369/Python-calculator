@@ -325,11 +325,18 @@ class Statement(ExpressionAST):
         return value
 
     @override
-    def __repr__(self):
+    def __str__(self) -> str:
         value = f'{self.expression}'
         if self.name_token:
             value = f'{self.name_token.value} = {value}'
         return value
+
+    @override
+    def __repr__(self) -> str:
+        return (
+            f'Statement(name_token={repr(self.name_token)}, ' +
+            f'expression={repr(self.expression)})'
+        )
 
 
 # Expression => Term ( ( '+' | '-' ) Term )*
