@@ -292,11 +292,14 @@ class Statement(ExpressionAST):
     @override
     def evaluate(self):
         value = self.expression.evaluate()
-        if self.name_token:
-            if self.name_token.value not in MATHEMATICAL_CONSTANTS:
-                names[self.name_token.value] = value
+        if var := (
+            None if not self.name_token
+            else self.name_token.value
+        ):
+            if var not in MATHEMATICAL_CONSTANTS:
+                names[var] = value
             else:
-                raise RedefiningConstantError(constant_token=self.name_token)
+                raise RedefiningConstantError(constant_token=var)
         return value
 
     @override
@@ -348,19 +351,13 @@ class Term(ExpressionAST):
     def evaluate(self):
         left = self.left_exponential.evaluate()
         right = self.right_exponential.evaluate()
-        if self.operator.ttype == TokenType.STAR:
-            return left * right
-        elif self.operator.ttype == TokenType.PERCENT:
-            if right:
-                return left % right
-            else:
-                raise ZeroModulusError(operator=self.operator)
-        else:
-            # Division
-            if right:
-                return eval(f'{left}{self.operator.value}{right}')
-            else:
-                raise DivisionByZeroError(operator=self.operator)
+        if not right:
+            match self.operator.ttype:
+                case TokenType.PERCENT:
+                    raise ZeroModulusError(operator=self.operator)
+                case TokenType.SLASH | TokenType.DOUBLE_SLASH:
+                    raise DivisionByZeroError(operator=self.operator)
+        return eval(f'{left}{self.operator.value}{right}')
 
     @override
     def __repr__(self) -> str:
