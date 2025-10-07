@@ -312,21 +312,39 @@ class Statement(ExpressionAST):
 
 # Expression => Term ( ( '+' | '-' ) Term )*
 class Expression(ExpressionAST):
-    def __init__(self, lhs, op, rhs):
-        self.left_term: ExpressionAST = lhs
-        self.operator: Token = op
-        self.right_term: ExpressionAST = rhs
+    def __init__(
+        self,
+        terms: list[ExpressionAST],
+        operators: list[TokenType]
+    ):
+        self.terms: list[ExpressionAST] = terms
+        self.operators: list[TokenType] = operators
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     @override
     def evaluate(self):
-        left = self.left_term.evaluate()
-        right = self.right_term.evaluate()
-        return eval(f'{left}{self.operator.value}{right}')
+        value = self.terms[0].evaluate()
+        for i in range(1, len(self.terms)):
+            term = self.terms[i].evaluate()
+            match self.operators[i-1]:
+                case TokenType.PLUS:
+                    value += term
+                case TokenType.MINUS:
+                    value -= term
+        return value
 
     @override
     def __repr__(self) -> str:
-        return f'{self.left_term} {self.operator.value} {self.right_term}'
+        terms = [term.evaluate() for term in self.terms]
+        operators = [
+            '+' if op == TokenType.PLUS
+            else '-'
+            for op in self.operators
+        ] + ['']
+        return ''.join(
+            f'{term}{op}'
+            for (term, op) in zip(terms, operators)
+        )
 
 
 class DivisionByZeroError(Exception):
@@ -622,18 +640,17 @@ class Parser:
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
         if parsed_expression:
+            terms: list[ExpressionAST] = [parsed_expression]
+            operators: list[TokenType] = []
             while not error and self.check(TokenType.PLUS, TokenType.MINUS):
                 operator = self.consume()  # Get operator
+                operators.append(operator.ttype)
                 right_term = self.parse_term()
                 if right_term.error:
                     parsed_expression = None
                     error = right_term.error
                 elif right_term.parsed_expression:
-                    parsed_expression = Expression(
-                        lhs=parsed_expression,
-                        op=operator,
-                        rhs=right_term.parsed_expression
-                    )
+                    terms.append(right_term.parsed_expression)
                 else:
                     # Expected expression after + or -
                     parsed_expression = None
@@ -643,6 +660,11 @@ class Parser:
                     error += current_line[:operator.col+1]
                     error += ' ' + current_line[operator.col+1:]
                     error += (' ' * (operator.col+1)) + '^'
+            if not error:
+                if len(terms) == 1:
+                    parsed_expression = terms.pop()
+                else:
+                    parsed_expression = Expression(terms, operators)
         return ParseResult(parsed_expression, error)
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
