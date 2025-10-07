@@ -272,7 +272,7 @@ OPERATORS_MAP = {
     TokenType.PLUS: operator.add,
     TokenType.MINUS: operator.sub,
     TokenType.STAR: operator.mul,
-    TokenType.SLASH: operator.div,
+    TokenType.SLASH: operator.truediv,
     TokenType.EXPONENT: operator.pow,
     TokenType.DOUBLE_SLASH: operator.floordiv,
     TokenType.PERCENT: operator.mod,
@@ -383,30 +383,58 @@ class ZeroModulusError(Exception):
 
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
 class Term(ExpressionAST):
-    def __init__(self, lhs, op, rhs):
-        self.left_exponential: ExpressionAST = lhs
-        self.operator: Token = op
-        self.right_exponential: ExpressionAST = rhs
+    def __init__(
+        self,
+        exponentials: list[ExpressionAST],
+        operators: list[Token]
+    ):
+        self.exponentials: list[ExpressionAST] = exponentials
+        self.operators: list[Token] = operators
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
     @override
     def evaluate(self):
-        left = self.left_exponential.evaluate()
-        right = self.right_exponential.evaluate()
-        if not right:
-            match self.operator.ttype:
-                case TokenType.PERCENT:
-                    raise ZeroModulusError(operator=self.operator)
-                case TokenType.SLASH | TokenType.DOUBLE_SLASH:
-                    raise DivisionByZeroError(operator=self.operator)
-        return eval(f'{left}{self.operator.value}{right}')
+        value = self.exponentials[0].evaluate()
+        for i in range(1, len(self.exponentials)):
+            exponential = self.exponentials[i].evaluate()
+            op_tok = self.operators[i-1]
+            op = OPERATORS_MAP[op_tok.ttype]
+            if not exponential:
+                match op_tok.ttype:
+                    case TokenType.SLASH | TokenType.DOUBLE_SLASH:
+                        raise DivisionByZeroError(operator=op_tok)
+                    case TokenType.PERCENT:
+                        raise ZeroModulusError(operator=op_tok)
+            value = op(value, exponential)
+        return value
+
+    @override
+    def __str__(self) -> str:
+        exponentials = [
+            exponential.evaluate()
+            for exponential in self.exponentials
+        ]
+        operators = [
+            OPERATORS_STRINGS[op.ttype]
+            for op in self.operators
+        ] + ['']
+        return ''.join(
+            f'{exponential}{op}'
+            for (exponential, op) in zip(exponentials, operators)
+        )
 
     @override
     def __repr__(self) -> str:
-        value = f'{self.left_exponential} '
-        value += f'{self.operator.value} '
-        value += f'{self.right_exponential}'
-        return value
+        exponentials = [
+            repr(exponential)
+            for exponential in self.exponentials
+        ]
+        operators = [repr(op.ttype) for op in self.operators]
+        return (
+            'Term(exponentials=' +
+            f'{repr(exponentials)}, ' +
+            f'operators={repr(operators)})'
+        )
 
 
 # Exponential => Unary ( '**' Unary )*
@@ -697,23 +725,22 @@ class Parser:
         error, parsed_expression = initial.error, initial.parsed_expression
         del initial
         if parsed_expression:
+            exponentials: list[ExpressionAST] = [parsed_expression]
+            operators: list[Token] = []
             while not error and self.check(
                 TokenType.STAR, TokenType.SLASH,
                 TokenType.DOUBLE_SLASH, TokenType.PERCENT
             ):
                 operator = self.consume()  # Get operator
+                operators.append(operator)
                 right_exponential = self.parse_exponential()
                 if right_exponential.error:
                     parsed_expression = None
                     error = right_exponential.error
                 elif right_exponential.parsed_expression:
-                    parsed_expression = Term(
-                        lhs=parsed_expression,
-                        op=operator,
-                        rhs=right_exponential.parsed_expression
-                    )
+                    exponentials.append(right_exponential.parsed_expression)
                 else:
-                    # Expected expression after * or /
+                    # Expected expression after * / // %
                     parsed_expression = None
                     error = f'Error in line {operator.line+1}: '
                     error += f'Expected expression after {operator.value}\n'
@@ -721,6 +748,11 @@ class Parser:
                     error += current_line[:operator.col+1]
                     error += ' ' + current_line[operator.col+1:]
                     error += (' ' * (operator.col+1)) + '^'
+            if not error:
+                if len(exponentials) == 1:
+                    parsed_expression = exponentials.pop()
+                else:
+                    parsed_expression = Term(exponentials, operators)
         return ParseResult(parsed_expression, error)
 
     # Exponential => Unary ( '**' Unary )*
