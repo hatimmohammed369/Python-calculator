@@ -338,7 +338,7 @@ class Expression(ExpressionAST):
         return value
 
     @override
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         terms = [term.evaluate() for term in self.terms]
         operators = [
             '+' if op == TokenType.PLUS
@@ -349,6 +349,12 @@ class Expression(ExpressionAST):
             f'{term}{op}'
             for (term, op) in zip(terms, operators)
         )
+
+    @override
+    def __repr__(self) -> str:
+        terms = [repr(term) for term in self.terms]
+        operators = [repr(op) for op in self.operators]
+        return f'Expression(terms={repr(terms)}, operators={repr(operators)})'
 
 
 class DivisionByZeroError(Exception):
