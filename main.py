@@ -267,7 +267,7 @@ names['infinity'] = math.inf
 names['nan'] = math.nan
 
 
-class ExpressionBase(ABC):
+class ExpressionAST(ABC):
     @abstractmethod
     def evaluate(self):
         pass
@@ -283,10 +283,10 @@ class RedefiningConstantError(Exception):
 
 
 # Statement => ( NAME '=' )? Expression END_OF_LINE
-class Statement(ExpressionBase):
-    def __init__(self, name_token: Token, expression: ExpressionBase):
+class Statement(ExpressionAST):
+    def __init__(self, name_token: Token, expression: ExpressionAST):
         self.name_token: Token = name_token
-        self.expression: ExpressionBase = expression
+        self.expression: ExpressionAST = expression
 
     # Statement => ( NAME '=' )? Expression END_OF_LINE
     @override
@@ -308,11 +308,11 @@ class Statement(ExpressionBase):
 
 
 # Expression => Term ( ( '+' | '-' ) Term )*
-class Expression(ExpressionBase):
+class Expression(ExpressionAST):
     def __init__(self, lhs, op, rhs):
-        self.left_term: ExpressionBase = lhs
+        self.left_term: ExpressionAST = lhs
         self.operator: Token = op
-        self.right_term: ExpressionBase = rhs
+        self.right_term: ExpressionAST = rhs
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     @override
@@ -337,11 +337,11 @@ class ZeroModulusError(Exception):
 
 
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
-class Term(ExpressionBase):
+class Term(ExpressionAST):
     def __init__(self, lhs, op, rhs):
-        self.left_exponential: ExpressionBase = lhs
+        self.left_exponential: ExpressionAST = lhs
         self.operator: Token = op
-        self.right_exponential: ExpressionBase = rhs
+        self.right_exponential: ExpressionAST = rhs
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
     @override
@@ -371,10 +371,10 @@ class Term(ExpressionBase):
 
 
 # Exponential => Unary ( '**' Unary )*
-class Exponential(ExpressionBase):
+class Exponential(ExpressionAST):
     def __init__(self, base, exponent):
-        self.base: ExpressionBase = base
-        self.exponent: ExpressionBase = exponent
+        self.base: ExpressionAST = base
+        self.exponent: ExpressionAST = exponent
 
     # Exponential => Unary ( '**' Unary )*
     @override
@@ -389,8 +389,8 @@ class Exponential(ExpressionBase):
 
 
 # Unary => ( '-' )? Primary
-class Unary(ExpressionBase):
-    def __init__(self, sign_token: Token, expression: ExpressionBase):
+class Unary(ExpressionAST):
+    def __init__(self, sign_token: Token, expression: ExpressionAST):
         self.sign_token = sign_token
         self.expression = expression
 
@@ -411,7 +411,7 @@ class Unary(ExpressionBase):
 
 
 # Primary => Name | Number | Grouped | FunctionCall
-class Primary(ExpressionBase):
+class Primary(ExpressionAST):
     @override
     def evaluate(self):
         pass
@@ -465,7 +465,7 @@ class Number(Primary):
 
 # Grouped => '(' Expression ')'
 class Grouped(Primary):
-    def __init__(self, expression: ExpressionBase):
+    def __init__(self, expression: ExpressionAST):
         self.expression = expression
 
     # Grouped => '(' Expression ')'
@@ -490,7 +490,7 @@ class InvalidFunctionCallError(Exception):
 
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 class FunctionCall:
-    def __init__(self, function_name: Token, arguments: list[ExpressionBase]):
+    def __init__(self, function_name: Token, arguments: list[ExpressionAST]):
         self.function_name = function_name
         self.arguments = arguments
 
@@ -517,8 +517,8 @@ class FunctionCall:
 
 
 class ParseResult:
-    def __init__(self, parsed_expression: ExpressionBase, error: str):
-        self.parsed_expression: ExpressionBase = parsed_expression
+    def __init__(self, parsed_expression: ExpressionAST, error: str):
+        self.parsed_expression: ExpressionAST = parsed_expression
         self.error: str = error
 
 
