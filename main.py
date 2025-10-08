@@ -698,6 +698,11 @@ class Parser:
         except StopIteration:
             self.current: Token = None
 
+    def consume_if(self, *expected_types: TokenType) -> Token:
+        if self.check(*expected_types):
+            return self.consume()
+        return None
+
     def consume(self) -> Token:
         copy = self.current
         self.read_next_token()
@@ -785,6 +790,57 @@ class Parser:
             parsed_expression = Statement(
                 name_token=name,
                 expression=parsed_expression
+            )
+        return ParseResult(parsed_expression, error)
+
+    # FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
+    def parse_function_definition(self) -> ParseResult:
+        self.read_next_token()  # skip keyword fn
+        if not (function_name := self.consume_if(TokenType.NAME)):
+            # Syntax error, expected function name
+            parsed_expression = None
+            error = f'Error in line {function_name.line+1}: '
+            error += 'Expected function name after keyword fn\n'
+            current_line = self.get_token_line(function_name)
+            error += current_line[:function_name.col+1]
+            error += ' ' + current_line[function_name.col+1:]
+            error += (' ' * (function_name.col+1)) + '^'
+            return ParseResult(parsed_expression, error)
+        if not (parenthesis := self.consume_if(TokenType.LEFT_PARENTHESIS)):
+            # Syntax error, expected ( after function name
+            parsed_expression = None
+            error = f'Error in line {parenthesis.line+1}: '
+            error += 'Expected ( after function name\n'
+            current_line = self.get_token_line(parenthesis)
+            error += current_line[:parenthesis.col+1]
+            error += ' ' + current_line[parenthesis.col+1:]
+            error += (' ' * (parenthesis.col+1)) + '^'
+            return ParseResult(parsed_expression, error)
+        parameters: list[Token] = []
+        while parameter := self.consume_if(TokenType.NAME):
+            parameters.append(parameter)
+            self.consume_if(TokenType.COMMA)
+        if not (parenthesis := self.consume_if(TokenType.RIGHT_PARENTHESIS)):
+            # Syntax error, expected ) after parameters list
+            parsed_expression = None
+            error = f'Error in line {parenthesis.line+1}: '
+            error += 'Expected ) after parameters list\n'
+            current_line = self.get_token_line(parenthesis)
+            error += current_line[:parenthesis.col+1]
+            error += ' ' + current_line[parenthesis.col+1:]
+            error += (' ' * (parenthesis.col+1)) + '^'
+            return ParseResult(parsed_expression, error)
+        self.read_next_token()  # skip =
+        function_body = self.parse_expression()
+        if function_body.error:
+            parsed_expression = None
+            error = function_body.error
+        else:
+            error = None
+            parsed_expression = FunctionDefinition(
+                function_name,
+                parameters,
+                function_body.parsed_expression
             )
         return ParseResult(parsed_expression, error)
 
