@@ -484,17 +484,11 @@ class Unary(ExpressionAST):
     # Unary => ( '-' )? Primary
     @override
     def evaluate(self):
-        value = self.expression.evaluate()
-        if self.sign_token:
-            value *= -1
-        return value
+        return -self.expression.evaluate()
 
     @override
     def __str__(self) -> str:
-        value = f'{self.expression}'
-        if self.sign_token:
-            value = f'-{value}'
-        return value
+        return f'-{self.expression}'
 
     @override
     def __repr__(self) -> str:
@@ -835,15 +829,15 @@ class Parser:
 
     # Unary => ( '-' )? Primary
     def parse_unary(self) -> ParseResult:
-        if self.check(TokenType.MINUS):
-            sign = self.consume()
-        else:
-            sign = None
+        sign = (
+            self.consume() if self.check(TokenType.MINUS)
+            else None
+        )
         primary = self.parse_primary()
         error, parsed_expression = primary.error, primary.parsed_expression
         del primary
-        if not error:
-            if sign and not parsed_expression:
+        if not error and sign:
+            if not parsed_expression:
                 # Expected expression after -
                 current_line = self.tokenizer.input_lines[sign.line]
                 error += f'Error in line {sign.line}: '
@@ -853,7 +847,7 @@ class Parser:
                     error += ' '
                 error += current_line[sign.col:]
                 error += ' ' * sign.col + '^'
-            elif parsed_expression:
+            else:
                 parsed_expression = Unary(
                     sign_token=sign,
                     expression=parsed_expression
