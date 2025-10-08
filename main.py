@@ -677,15 +677,30 @@ class FunctionCall(Primary):
     # FunctionCall => NAME '(' ( Expression ',' )* ')'
     @override
     def evaluate(self):
-        function = eval(f'math.{self.function_name.value}')
         arguments = [argument.evaluate() for argument in self.arguments]
-        try:
-            return function(*arguments)
-        except TypeError as e:
-            raise InvalidFunctionCallError(
-                function_name_token=self.function_name,
-                exception_error_message=str(e).replace('math.', 'Function ')
-            )
+        function: FunctionDefinition = defined_functions.get(
+            self.function_name.value, None
+        )
+        if function:
+            create_new_namespace()
+            get_active_namespace().update({
+                paramter.value: argument
+                for (paramter, argument) in zip(function.parameters, arguments)
+            })
+            value = function.body.evaluate()
+            destroy_active_namespace()
+            return value
+        else:
+            function = getattr(math, self.function_name.value, None)
+            try:
+                return function(*arguments)
+            except TypeError as e:
+                raise InvalidFunctionCallError(
+                    function_name_token=self.function_name,
+                    exception_error_message=(
+                        str(e).replace('math.', 'Function ')
+                    )
+                )
 
     @override
     def __str__(self):
