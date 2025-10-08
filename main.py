@@ -564,7 +564,7 @@ class Number(Primary):
 # Grouped => '(' Expression ')'
 class Grouped(Primary):
     def __init__(self, expression: ExpressionAST):
-        self.expression = expression
+        self.expression: ExpressionAST = expression
 
     # Grouped => '(' Expression ')'
     @override
@@ -572,8 +572,12 @@ class Grouped(Primary):
         return self.expression.evaluate()
 
     @override
-    def __repr__(self):
+    def __str__(self):
         return f'({self.expression})'
+
+    @override
+    def __repr__(self):
+        return f'Grouped(expression={repr(self.expression)})'
 
 
 class InvalidFunctionCallError(Exception):
