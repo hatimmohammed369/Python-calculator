@@ -495,7 +495,7 @@ class Unary(ExpressionAST):
     @override
     def __repr__(self) -> str:
         return (
-            f'Unary(sign_token={repr(self.sign_token)}, '
+            f'Unary(sign_token={repr(self.sign_token)}, ' +
             f'expression={repr(self.expression)})'
         )
 
@@ -593,8 +593,8 @@ class InvalidFunctionCallError(Exception):
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 class FunctionCall:
     def __init__(self, function_name: Token, arguments: list[ExpressionAST]):
-        self.function_name = function_name
-        self.arguments = arguments
+        self.function_name: Token = function_name
+        self.arguments: list[ExpressionAST] = arguments
 
     # FunctionCall => NAME '(' ( Expression ',' )* ')'
     @override
@@ -610,12 +610,19 @@ class FunctionCall:
             )
 
     @override
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         value = self.function_name.value + '('
         for argument in self.arguments[:-1]:
             value += f'{argument}, '
         value += f'{self.arguments[-1]})'
         return value
+
+    @override
+    def __repr__(self) -> str:
+        return (
+            f'FunctionCall(function_name={repr(self.function_name)}, ' +
+            f'arguments={[repr(arg) for arg in self.arguments]})'
+        )
 
 
 class ParseResult:
