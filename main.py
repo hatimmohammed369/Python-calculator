@@ -370,6 +370,36 @@ class Statement(ExpressionAST):
         )
 
 
+# FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
+class FunctionDefinition(ExpressionAST):
+    def __init__(
+        self, name: Token, parameters: list[Token], body: ExpressionAST
+    ):
+        self.name: Token = name
+        self.parameters: list[Token] = parameters
+        self.body: ExpressionAST = body
+
+    @override
+    def evaluate(self):
+        defined_functions[self.name.value] = self
+
+    @override
+    def __str__(self) -> str:
+        parameters = ', '.join(
+            parameter.value
+            for parameter in self.parameters
+        )
+        return f'{self.name.value}({parameters}) = {self.body}'
+
+    @override
+    def __repr__(self) -> str:
+        return (
+            f'FunctionDefinition(name={repr(self.name)}, ' +
+            f'parameters={[repr(p) for p in self.parameters]}, ' +
+            f'body={repr(self.body)})'
+        )
+
+
 # Expression => Term ( ( '+' | '-' ) Term )*
 class Expression(ExpressionAST):
     def __init__(
