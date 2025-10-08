@@ -764,7 +764,13 @@ class Parser:
     # Expression => Term ( ( '+' | '-' ) Term )*
     def __next__(self):
         if self.current:
-            result = self.parse_statement()
+            match self.current.ttype:
+                case TokenType.KEYWORD_VAR:
+                    result = self.parse_statement()
+                case TokenType.KEYWORD_FN:
+                    result = self.parse_function_definition()
+                case _:
+                    result = self.parse_expression()
             error, parsed_expression = result.error, result.parsed_expression
             del result
             if parsed_expression:
@@ -801,20 +807,10 @@ class Parser:
 
     # Statement  => 'var' NAME '=' Expression
     def parse_statement(self) -> ParseResult:
-        is_assignment = False
-        if self.check(TokenType.NAME):
-            name = self.consume()
-            if not self.check(TokenType.EQUAL):
-                # Rewind to (name) token
-                # this is NOT an assignment
-                self.current = name
-                self.tokenizer.col = name.col + len(name.value)
-            else:
-                is_assignment = True
-                self.read_next_token()  # Skip =
+        self.read_next_token()  # skip keyword var
+        name = self.consume()
+        self.read_next_token()  # skip =
         expression = self.parse_expression()
-        if not is_assignment:
-            return expression
         error = expression.error
         parsed_expression = expression.parsed_expression
         del expression
