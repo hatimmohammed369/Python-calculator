@@ -751,7 +751,7 @@ class Parser:
                         error += (' ' * self.current.col)
                         error += ('^' * len(self.current.value))
                     elif self.check(TokenType.END_OF_LINE):
-                        self.read_next_token()  # Skip end of line
+                        self.read_next_token()  # skip end of line
                     return ParseResult(parsed_expression, error)
             else:
                 if error:
@@ -979,7 +979,6 @@ class Parser:
             if not self.check(TokenType.LEFT_PARENTHESIS):
                 parsed_expression = Name(name_token=name)
             else:
-                self.read_next_token()  # Skip (
                 function_call = self.parse_function_call(function_name=name)
                 error = function_call.error
                 parsed_expression = function_call.parsed_expression
@@ -1017,15 +1016,15 @@ class Parser:
 
     # Grouped => '(' Expression ')'
     def parse_grouped_expression(self) -> ParseResult:
+        self.read_next_token()  # skip opening (
         parsed_expression = None
         error = None
-        self.read_next_token()  # Skip (
         grouped_expression = self.parse_expression()
         if grouped_expression.error:
             error = grouped_expression.error
         elif grouped_expression.parsed_expression:
             if self.check(TokenType.RIGHT_PARENTHESIS):
-                self.read_next_token()  # Skip )
+                self.read_next_token()  # skip closing )
                 parsed_expression = grouped_expression.parsed_expression
                 if not isinstance(parsed_expression, Primary):
                     # Do not group a primary expression
@@ -1071,6 +1070,7 @@ class Parser:
 
     # FunctionCall => NAME '(' ( Expression ',' )* ')'
     def parse_function_call(self, function_name: Token) -> ParseResult:
+        self.read_next_token()  # skip opening (
         parsed_expression = None
         error = None
         arguments = []
@@ -1081,7 +1081,7 @@ class Parser:
             elif expression.parsed_expression:
                 arguments.append(expression.parsed_expression)
                 if self.check(TokenType.COMMA):
-                    self.read_next_token()  # Skip ,
+                    self.read_next_token()  # skip ,
                     continue
                 elif self.check(TokenType.RIGHT_PARENTHESIS):
                     break
@@ -1105,7 +1105,7 @@ class Parser:
                 break
         if not error:
             if self.check(TokenType.RIGHT_PARENTHESIS):
-                self.read_next_token()  # Skip )
+                self.read_next_token()  # skip closing )
                 parsed_expression = FunctionCall(
                     function_name, arguments
                 )
