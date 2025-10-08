@@ -519,7 +519,7 @@ class NameLookupError(Exception):
 # Name => NAME
 class Name(Primary):
     def __init__(self, name_token: Token):
-        self.name = name_token
+        self.name: Token = name_token
 
     # Name => NAME
     @override
@@ -530,8 +530,12 @@ class Name(Primary):
             raise NameLookupError(name_token=self.name)
 
     @override
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return self.name.value
+
+    @override
+    def __repr__(self) -> str:
+        return f'Name(name={repr(self.name)})'
 
 
 # Number => INTEGER | FLOAT
