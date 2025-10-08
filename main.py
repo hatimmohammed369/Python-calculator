@@ -27,6 +27,8 @@ class TokenType(Enum):
     COMMA = 12
     DOUBLE_SLASH = 13
     PERCENT = 14
+    KEYWORD_VAR = 15
+    KEYWORD_FN = 16
 
 
 class Token:
@@ -150,6 +152,20 @@ class Tokenizer:
                         read_token = Token(
                             ttype=TokenType.NAME,
                             value=name.group(),
+                            line=self.line,
+                            col=self.col
+                        )
+                    elif current_line[self.col:self.col+2] == 'fn':
+                        read_token = Token(
+                            ttype=TokenType.KEYWORD_FN,
+                            value='fn',
+                            line=self.line,
+                            col=self.col
+                        )
+                    elif current_line[self.col:self.col+3] == 'var':
+                        read_token = Token(
+                            ttype=TokenType.KEYWORD_VAR,
+                            value='var',
                             line=self.line,
                             col=self.col
                         )
