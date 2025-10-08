@@ -13,7 +13,7 @@ import readline
 
 class TokenType(Enum):
     INTEGER = 0
-    FLOAT = 0
+    FLOAT = 1
     PLUS = 2
     MINUS = 3
     STAR = 4
