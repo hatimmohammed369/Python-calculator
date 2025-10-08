@@ -353,15 +353,14 @@ class Statement(ExpressionAST):
             if var not in MATHEMATICAL_CONSTANTS:
                 names[var] = value
             else:
-                raise RedefiningConstantError(constant_token=var)
+                raise RedefiningConstantError(
+                    constant_token=self.name_token
+                )
         return value
 
     @override
     def __str__(self) -> str:
-        value = f'{self.expression}'
-        if self.name_token:
-            value = f'{self.name_token.value} = {value}'
-        return value
+        return f'{self.name_token.value} = {self.expression}'
 
     @override
     def __repr__(self) -> str:
@@ -393,13 +392,13 @@ class Expression(ExpressionAST):
 
     @override
     def __str__(self) -> str:
-        terms = [term.evaluate() for term in self.terms]
+        terms = [str(term) for term in self.terms]
         operators = [
             OPERATORS_STRINGS[op]
             for op in self.operators
         ] + ['']
         return ''.join(
-            f'{term}{op}'
+            f'{term} {op} '
             for (term, op) in zip(terms, operators)
         )
 
@@ -450,7 +449,7 @@ class Term(ExpressionAST):
     @override
     def __str__(self) -> str:
         exponentials = [
-            exponential.evaluate()
+            str(exponential)
             for exponential in self.exponentials
         ]
         operators = [
@@ -458,7 +457,7 @@ class Term(ExpressionAST):
             for op in self.operators
         ] + ['']
         return ''.join(
-            f'{exponential}{op}'
+            f'{exponential} {op} '
             for (exponential, op) in zip(exponentials, operators)
         )
 
@@ -485,14 +484,14 @@ class Exponential(ExpressionAST):
     @override
     def evaluate(self):
         value = self.unaries[-1].evaluate()
-        for unary in self.unaries[len(self.unaries)-2::-1]:
-            unary = unary.evaluate()
-            value = unary ** value
+        for left in reversed(self.unaries[:-1]):
+            left = left.evaluate()
+            value = left ** value
         return value
 
     @override
     def __str__(self) -> str:
-        return '**'.join(str(unary) for unary in self.unaries)
+        return '** '.join(str(unary) for unary in self.unaries)
 
     @override
     def __repr__(self) -> str:
@@ -640,12 +639,9 @@ class FunctionCall(Primary):
             )
 
     @override
-    def __str__(self) -> str:
-        value = self.function_name.value + '('
-        for argument in self.arguments[:-1]:
-            value += f'{argument}, '
-        value += f'{self.arguments[-1]})'
-        return value
+    def __str__(self):
+        args = ', '.join(str(a) for a in self.arguments)
+        return f'{self.function_name.value}({args})'
 
     @override
     def __repr__(self) -> str:
@@ -677,9 +673,9 @@ class Parser:
         self.read_next_token()
         return copy
 
-    def check(self, *ttype: TokenType) -> bool:
+    def check(self, *expected_types: TokenType) -> bool:
         if self.current:
-            for t in ttype:
+            for t in expected_types:
                 if self.current.ttype == t:
                     return True
         return False
