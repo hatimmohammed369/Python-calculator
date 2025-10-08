@@ -593,7 +593,7 @@ class InvalidFunctionCallError(Exception):
 
 
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
-class FunctionCall:
+class FunctionCall(Primary):
     def __init__(self, function_name: Token, arguments: list[ExpressionAST]):
         self.function_name: Token = function_name
         self.arguments: list[ExpressionAST] = arguments
@@ -912,9 +912,13 @@ class Parser:
         elif grouped_expression.parsed_expression:
             if self.check(TokenType.RIGHT_PARENTHESIS):
                 self.read_next_token()  # Skip )
-                parsed_expression = Grouped(
-                    expression=grouped_expression.parsed_expression
-                )
+                parsed_expression = grouped_expression.parsed_expression
+                if not isinstance(parsed_expression, Primary):
+                    # Do not group a primary expression
+                    # (number, name, group, function call)
+                    parsed_expression = Grouped(
+                        expression=parsed_expression
+                    )
             else:
                 # Expected ) after expression
                 line = len(self.tokenizer.input_lines) - 1
