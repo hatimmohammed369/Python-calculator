@@ -1030,18 +1030,6 @@ class Parser:
                     break
             error += current_line[:end+1] + '\n'
             error += (' ' * (end + 1)) + '^'
-        elif self.current:
-            # Unexpected item
-            line = self.current.line
-            error = f'Error in line {line+1}: Unexpected item\n'
-            current_line = self.tokenizer.input_lines[line]
-            end = self.current.col
-            for k in range(end, -1, -1):
-                if not current_line[k].isspace():
-                    end = k
-                    break
-            error += current_line[:end+1] + '\n'
-            error += (' ' * (end + 1)) + '^'
         return ParseResult(parsed_expression, error)
 
     # Grouped => '(' Expression ')'
