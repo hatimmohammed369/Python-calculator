@@ -287,13 +287,32 @@ class Tokenizer:
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 
 
+defined_functions = {}
+
+
 MATHEMATICAL_CONSTANTS = {'pi', 'e', 'tau', 'infinity', 'nan'}
-names: dict[str, float] = {}
-names['pi'] = math.pi
-names['e'] = math.e
-names['tau'] = math.tau
-names['infinity'] = math.inf
-names['nan'] = math.nan
+type Namespace = dict[str, float]
+global_namespace: Namespace = {}
+global_namespace['pi'] = math.pi
+global_namespace['e'] = math.e
+global_namespace['tau'] = math.tau
+global_namespace['infinity'] = math.inf
+global_namespace['nan'] = math.nan
+active_function_namespace: list[Namespace] = []
+
+
+def create_new_namespace():
+    active_function_namespace.append({})
+
+
+def destroy_active_namespace():
+    active_function_namespace.pop()
+
+
+def get_active_namespace() -> Namespace:
+    if active_function_namespace:
+        return active_function_namespace[-1]
+    return global_namespace
 
 
 OPERATORS_MAP = {
@@ -351,7 +370,7 @@ class Statement(ExpressionAST):
             else self.name_token.value
         ):
             if var not in MATHEMATICAL_CONSTANTS:
-                names[var] = value
+                global_namespace[var] = value
             else:
                 raise RedefiningConstantError(
                     constant_token=self.name_token
@@ -584,7 +603,7 @@ class Name(Primary):
     @override
     def evaluate(self):
         try:
-            return names[self.name.value]
+            return get_active_namespace()[self.name.value]
         except KeyError:
             raise NameLookupError(name_token=self.name)
 
