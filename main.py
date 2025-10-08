@@ -295,6 +295,10 @@ class ExpressionAST(ABC):
         pass
 
     @abstractmethod
+    def __str__(self) -> str:
+        pass
+
+    @abstractmethod
     def __repr__(self) -> str:
         pass
 
@@ -502,11 +506,15 @@ class Unary(ExpressionAST):
 
 # Primary => Name | Number | Grouped | FunctionCall
 class Primary(ExpressionAST):
-    @override
+    @abstractmethod
     def evaluate(self):
         pass
 
-    @override
+    @abstractmethod
+    def __str__(self) -> str:
+        pass
+
+    @abstractmethod
     def __repr__(self) -> str:
         pass
 
