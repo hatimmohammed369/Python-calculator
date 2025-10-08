@@ -462,6 +462,7 @@ class Exponential(ExpressionAST):
     def __str__(self) -> str:
         return '**'.join(str(unary) for unary in self.unaries)
 
+    @override
     def __repr__(self) -> str:
         unaries = [
             repr(unary)
@@ -473,8 +474,8 @@ class Exponential(ExpressionAST):
 # Unary => ( '-' )? Primary
 class Unary(ExpressionAST):
     def __init__(self, sign_token: Token, expression: ExpressionAST):
-        self.sign_token = sign_token
-        self.expression = expression
+        self.sign_token: Token = sign_token
+        self.expression: ExpressionAST = expression
 
     # Unary => ( '-' )? Primary
     @override
@@ -485,11 +486,18 @@ class Unary(ExpressionAST):
         return value
 
     @override
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         value = f'{self.expression}'
         if self.sign_token:
             value = f'-{value}'
         return value
+
+    @override
+    def __repr__(self) -> str:
+        return (
+            f'Unary(sign_token={repr(self.sign_token)}, '
+            f'expression={repr(self.expression)})'
+        )
 
 
 # Primary => Name | Number | Grouped | FunctionCall
