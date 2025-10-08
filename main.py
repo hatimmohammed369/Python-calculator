@@ -148,24 +148,34 @@ class Tokenizer:
                             line=self.line,
                             col=self.col
                         )
-                    elif name := NAMES_PATTERN.match(current_line, self.col):
-                        read_token = Token(
-                            ttype=TokenType.NAME,
-                            value=name.group(),
-                            line=self.line,
-                            col=self.col
-                        )
-                    elif current_line[self.col:self.col+2] == 'fn':
+                    elif (
+                        current_line[self.col:self.col+2] == 'fn' and
+                        self.col+2 < len(current_line) and
+                        not current_line[self.col+2].isalnum() and
+                        not current_line[self.col+2] == '_'
+                    ):
                         read_token = Token(
                             ttype=TokenType.KEYWORD_FN,
                             value='fn',
                             line=self.line,
                             col=self.col
                         )
-                    elif current_line[self.col:self.col+3] == 'var':
+                    elif (
+                        current_line[self.col:self.col+3] == 'var' and
+                        self.col+3 < len(current_line) and
+                        not current_line[self.col+3].isalnum() and
+                        not current_line[self.col+3] == '_'
+                    ):
                         read_token = Token(
                             ttype=TokenType.KEYWORD_VAR,
                             value='var',
+                            line=self.line,
+                            col=self.col
+                        )
+                    elif name := NAMES_PATTERN.match(current_line, self.col):
+                        read_token = Token(
+                            ttype=TokenType.NAME,
+                            value=name.group(),
                             line=self.line,
                             col=self.col
                         )
