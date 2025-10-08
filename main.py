@@ -273,7 +273,9 @@ class Tokenizer:
 
 
 # Context-Free Grammar
-# Statement => ( NAME '=' )? Expression END_OF_LINE
+# Program => ( ( Statement | FunctionDefinition | Expression ) END_OF_LINE )*
+# Statement  => 'var' NAME '=' Expression
+# FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
 # Exponential => Unary ( '**' Unary )*
@@ -334,13 +336,13 @@ class RedefiningConstantError(Exception):
         self.constant_token: Token = constant_token
 
 
-# Statement => ( NAME '=' )? Expression END_OF_LINE
+# Statement  => 'var' NAME '=' Expression
 class Statement(ExpressionAST):
     def __init__(self, name_token: Token, expression: ExpressionAST):
         self.name_token: Token = name_token
         self.expression: ExpressionAST = expression
 
-    # Statement => ( NAME '=' )? Expression END_OF_LINE
+    # Statement  => 'var' NAME '=' Expression
     @override
     def evaluate(self):
         value = self.expression.evaluate()
@@ -691,6 +693,10 @@ class Parser:
     def __iter__(self):
         return self
 
+    # Program => ( Statement | FunctionDefinition | Expression )*
+    # Statement  => 'var' NAME '=' Expression
+    # FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
+    # Expression => Term ( ( '+' | '-' ) Term )*
     def __next__(self):
         if self.current:
             result = self.parse_statement()
@@ -728,7 +734,7 @@ class Parser:
             # no more tokens to parse, stop iteration
             raise StopIteration
 
-    # Statement => ( NAME '=' )? Expression END_OF_LINE
+    # Statement  => 'var' NAME '=' Expression
     def parse_statement(self) -> ParseResult:
         is_assignment = False
         if self.check(TokenType.NAME):
