@@ -5,6 +5,7 @@ from sys import stderr
 from re import compile
 from typing import override
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import math
 import argparse
 import operator
@@ -267,7 +268,8 @@ class Tokenizer:
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
 # Exponential => Unary ( '**' Unary )*
 # Unary => ( '-' )? Primary
-# Primary => FunctionCall | Grouped | NAME | Number
+# Primary => FunctionCall | Grouped | Name | Number
+# Name => NAME
 # Number => INTEGER | FLOAT
 # Grouped => '(' Expression ')'
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
@@ -700,10 +702,14 @@ class FunctionCall(Primary):
         )
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class ParseResult:
-    def __init__(self, parsed_expression: ExpressionAST, error: str):
-        self.parsed_expression: ExpressionAST = parsed_expression
-        self.error: str = error
+    parsed_expression: ExpressionAST
+    error: str
+
+    def __iter__(self):
+        yield self.parsed_expression
+        yield self.error
 
 
 class Parser:
@@ -754,7 +760,7 @@ class Parser:
                     result = self.parse_function_definition()
                 case _:
                     result = self.parse_statement()
-            error, parsed_expression = result.error, result.parsed_expression
+            parsed_expression, error = result
             del result
             if parsed_expression:
                 if error:
@@ -790,18 +796,14 @@ class Parser:
 
     # Statement  => ( NAME '=' )? Expression
     def parse_statement(self) -> ParseResult:
-        head = self.parse_expression()
-        error = head.error
-        parsed_expression = head.parsed_expression
+        parsed_expression, error = self.parse_expression()
         if not error:
             if (
                 isinstance(parsed_expression, Name) and
                 self.consume_if(TokenType.EQUAL)
             ):
                 name = parsed_expression.name
-                tail = self.parse_expression()
-                error = tail.error
-                parsed_expression = tail.parsed_expression
+                parsed_expression, error = self.parse_expression()
                 if not error:
                     parsed_expression = Statement(
                         name_token=name,
@@ -851,36 +853,31 @@ class Parser:
             error += (' ' * (parenthesis.col+1)) + '^'
             return ParseResult(parsed_expression, error)
         self.read_next_token()  # skip =
-        function_body = self.parse_expression()
-        if function_body.error:
+        parsed_expression, error = self.parse_expression()
+        if error:
             parsed_expression = None
-            error = function_body.error
         else:
-            error = None
             parsed_expression = FunctionDefinition(
                 function_name,
                 parameters,
-                function_body.parsed_expression
+                parsed_expression
             )
         return ParseResult(parsed_expression, error)
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     def parse_expression(self) -> ParseResult:
-        initial = self.parse_term()
-        error, parsed_expression = initial.error, initial.parsed_expression
-        del initial
+        parsed_expression, error = self.parse_term()
         if parsed_expression:
             terms: list[ExpressionAST] = [parsed_expression]
             operators: list[TokenType] = []
             while not error and self.check(TokenType.PLUS, TokenType.MINUS):
                 operator = self.consume()  # Get operator
                 operators.append(operator.ttype)
-                right_term = self.parse_term()
-                if right_term.error:
+                parsed_expression, error = self.parse_term()
+                if error:
                     parsed_expression = None
-                    error = right_term.error
-                elif right_term.parsed_expression:
-                    terms.append(right_term.parsed_expression)
+                elif parsed_expression:
+                    terms.append(parsed_expression)
                 else:
                     # Expected expression after + or -
                     parsed_expression = None
@@ -899,9 +896,7 @@ class Parser:
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
     def parse_term(self) -> ParseResult:
-        initial = self.parse_exponential()
-        error, parsed_expression = initial.error, initial.parsed_expression
-        del initial
+        parsed_expression, error = self.parse_exponential()
         if parsed_expression:
             exponentials: list[ExpressionAST] = [parsed_expression]
             operators: list[Token] = []
@@ -911,12 +906,11 @@ class Parser:
             ):
                 operator = self.consume()  # Get operator
                 operators.append(operator)
-                right_exponential = self.parse_exponential()
-                if right_exponential.error:
+                parsed_expression, error = self.parse_exponential()
+                if error:
                     parsed_expression = None
-                    error = right_exponential.error
-                elif right_exponential.parsed_expression:
-                    exponentials.append(right_exponential.parsed_expression)
+                elif parsed_expression:
+                    exponentials.append(parsed_expression)
                 else:
                     # Expected expression after * / // %
                     parsed_expression = None
@@ -935,19 +929,16 @@ class Parser:
 
     # Exponential => Unary ( '**' Unary )*
     def parse_exponential(self) -> ParseResult:
-        initial = self.parse_unary()
-        error, parsed_expression = initial.error, initial.parsed_expression
-        del initial
+        parsed_expression, error = self.parse_unary()
         if parsed_expression:
             items: list[ExpressionAST] = [parsed_expression]
             while not error and self.check(TokenType.EXPONENT):
                 operator = self.consume()
-                exponent = self.parse_unary()
-                if exponent.error:
+                parsed_expression, error = self.parse_unary()
+                if error:
                     parsed_expression = None
-                    error = exponent.error
-                elif exponent.parsed_expression:
-                    items.append(exponent.parsed_expression)
+                elif parsed_expression:
+                    items.append(parsed_expression)
                 else:
                     # Expected expression after **
                     parsed_expression = None
@@ -963,13 +954,8 @@ class Parser:
 
     # Unary => ( '-' )? Primary
     def parse_unary(self) -> ParseResult:
-        sign = (
-            self.consume() if self.check(TokenType.MINUS)
-            else None
-        )
-        primary = self.parse_primary()
-        error, parsed_expression = primary.error, primary.parsed_expression
-        del primary
+        sign = self.consume_if(TokenType.MINUS)
+        parsed_expression, error = self.parse_primary()
         if not error and sign:
             if not parsed_expression:
                 # Expected expression after -
@@ -999,14 +985,13 @@ class Parser:
             if not self.check(TokenType.LEFT_PARENTHESIS):
                 parsed_expression = Name(name_token=name)
             else:
-                function_call = self.parse_function_call(function_name=name)
-                error = function_call.error
-                parsed_expression = function_call.parsed_expression
-                del function_call
+                parsed_expression, error = (
+                    self.parse_function_call(function_name=name)
+                )
         elif self.check(TokenType.LEFT_PARENTHESIS):
-            grouped = self.parse_grouped_expression()
-            error, parsed_expression = grouped.error, grouped.parsed_expression
-            del grouped
+            parsed_expression, error = (
+                self.parse_grouped_expression()
+            )
         elif self.check(TokenType.END_OF_LINE):
             # Unexpected end of line
             line = self.current.line
@@ -1025,15 +1010,12 @@ class Parser:
     # Grouped => '(' Expression ')'
     def parse_grouped_expression(self) -> ParseResult:
         self.read_next_token()  # skip opening (
-        parsed_expression = None
-        error = None
-        grouped_expression = self.parse_expression()
-        if grouped_expression.error:
-            error = grouped_expression.error
-        elif grouped_expression.parsed_expression:
+        parsed_expression, error = self.parse_expression()
+        if error:
+            parsed_expression = None
+        elif parsed_expression:
             if self.check(TokenType.RIGHT_PARENTHESIS):
                 self.read_next_token()  # skip closing )
-                parsed_expression = grouped_expression.parsed_expression
                 if not isinstance(parsed_expression, Primary):
                     # Do not group a primary expression
                     # (number, name, group, function call)
@@ -1083,11 +1065,11 @@ class Parser:
         error = None
         arguments = []
         while not error:
-            expression = self.parse_expression()
-            if expression.error:
-                error = expression.error
-            elif expression.parsed_expression:
-                arguments.append(expression.parsed_expression)
+            parsed_expression, error = self.parse_expression()
+            if error:
+                parsed_expression = None
+            elif parsed_expression:
+                arguments.append(parsed_expression)
                 if self.check(TokenType.COMMA):
                     self.read_next_token()  # skip ,
                     continue
@@ -1136,9 +1118,7 @@ class Parser:
 
 def process(parser: Parser, interactive: bool):
     for parse_result in parser:
-        error = parse_result.error
-        parsed_expression = parse_result.parsed_expression
-        del parse_result
+        parsed_expression, error = parse_result
         if error:
             print(error, file=stderr)
             break
