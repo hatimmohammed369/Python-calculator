@@ -750,12 +750,10 @@ class Parser:
     def __next__(self):
         if self.current:
             match self.current.ttype:
-                case TokenType.KEYWORD_VAR:
-                    result = self.parse_statement()
                 case TokenType.KEYWORD_FN:
                     result = self.parse_function_definition()
                 case _:
-                    result = self.parse_expression()
+                    result = self.parse_statement()
             error, parsed_expression = result.error, result.parsed_expression
             del result
             if parsed_expression:
@@ -792,20 +790,27 @@ class Parser:
 
     # Statement  => ( NAME '=' )? Expression
     def parse_statement(self) -> ParseResult:
-        self.read_next_token()  # skip keyword var
-        name = self.consume()
-        self.read_next_token()  # skip =
-        expression = self.parse_expression()
-        error = expression.error
-        parsed_expression = expression.parsed_expression
-        del expression
-        if error:
+        head = self.parse_expression()
+        error = head.error
+        parsed_expression = head.parsed_expression
+        if not error:
+            if (
+                isinstance(parsed_expression, Name) and
+                self.consume_if(TokenType.EQUAL)
+            ):
+                name = parsed_expression.name
+                tail = self.parse_expression()
+                error = tail.error
+                parsed_expression = tail.parsed_expression
+                if not error:
+                    parsed_expression = Statement(
+                        name_token=name,
+                        expression=parsed_expression
+                    )
+                else:
+                    parsed_expression = None
+        else:
             parsed_expression = None
-        elif parsed_expression:
-            parsed_expression = Statement(
-                name_token=name,
-                expression=parsed_expression
-            )
         return ParseResult(parsed_expression, error)
 
     # FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
