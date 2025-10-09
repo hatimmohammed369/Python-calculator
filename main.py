@@ -389,6 +389,8 @@ class FunctionDefinition(ExpressionAST):
     @override
     def evaluate(self):
         defined_functions[self.name.value] = self
+        parameters = ', '.join(p.value for p in self.parameters)
+        return f'function {self.name.value}({parameters})'
 
     @override
     def __str__(self) -> str:
