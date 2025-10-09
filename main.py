@@ -27,8 +27,7 @@ class TokenType(Enum):
     COMMA = 12
     DOUBLE_SLASH = 13
     PERCENT = 14
-    KEYWORD_VAR = 15
-    KEYWORD_FN = 16
+    KEYWORD_FN = 15
 
 
 class Token:
@@ -160,18 +159,6 @@ class Tokenizer:
                             line=self.line,
                             col=self.col
                         )
-                    elif (
-                        current_line[self.col:self.col+3] == 'var' and
-                        self.col+3 < len(current_line) and
-                        not current_line[self.col+3].isalnum() and
-                        not current_line[self.col+3] == '_'
-                    ):
-                        read_token = Token(
-                            ttype=TokenType.KEYWORD_VAR,
-                            value='var',
-                            line=self.line,
-                            col=self.col
-                        )
                     elif name := NAMES_PATTERN.match(current_line, self.col):
                         read_token = Token(
                             ttype=TokenType.NAME,
@@ -273,15 +260,14 @@ class Tokenizer:
 
 
 # Context-Free Grammar
-# Program => ( ( Statement | FunctionDefinition | Expression ) END_OF_LINE )*
-# Statement  => 'var' NAME '=' Expression
+# Program => ( ( Statement | FunctionDefinition ) END_OF_LINE )*
+# Statement  => ( NAME '=' )? Expression
 # FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
 # Exponential => Unary ( '**' Unary )*
 # Unary => ( '-' )? Primary
-# Primary => Name | Number | Grouped | FunctionCall
-# Name => NAME
+# Primary => FunctionCall | Grouped | NAME | Number
 # Number => INTEGER | FLOAT
 # Grouped => '(' Expression ')'
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
@@ -355,13 +341,13 @@ class RedefiningConstantError(Exception):
         self.constant_token: Token = constant_token
 
 
-# Statement  => 'var' NAME '=' Expression
+# Statement  => ( NAME '=' )? Expression
 class Statement(ExpressionAST):
     def __init__(self, name_token: Token, expression: ExpressionAST):
         self.name_token: Token = name_token
         self.expression: ExpressionAST = expression
 
-    # Statement  => 'var' NAME '=' Expression
+    # Statement  => ( NAME '=' )? Expression
     @override
     def evaluate(self):
         value = self.expression.evaluate()
@@ -574,7 +560,7 @@ class Unary(ExpressionAST):
         )
 
 
-# Primary => Name | Number | Grouped | FunctionCall
+# Primary => FunctionCall | Grouped | NAME | Number
 class Primary(ExpressionAST):
     @abstractmethod
     def evaluate(self):
@@ -621,7 +607,6 @@ class Number(Primary):
     def __init__(self, number_token: Token):
         self.number: Token = number_token
 
-    # Number => NAME
     @override
     def evaluate(self):
         match self.number.ttype:
@@ -758,8 +743,8 @@ class Parser:
     def __iter__(self):
         return self
 
-    # Program => ( Statement | FunctionDefinition | Expression )*
-    # Statement  => 'var' NAME '=' Expression
+    # Program => ( ( Statement | FunctionDefinition ) END_OF_LINE )*
+    # Statement  => ( NAME '=' )? Expression
     # FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
     # Expression => Term ( ( '+' | '-' ) Term )*
     def __next__(self):
@@ -805,7 +790,7 @@ class Parser:
             # no more tokens to parse, stop iteration
             raise StopIteration
 
-    # Statement  => 'var' NAME '=' Expression
+    # Statement  => ( NAME '=' )? Expression
     def parse_statement(self) -> ParseResult:
         self.read_next_token()  # skip keyword var
         name = self.consume()
@@ -998,7 +983,7 @@ class Parser:
                 )
         return ParseResult(parsed_expression, error)
 
-    # Primary => Name | Number | Grouped | FunctionCall
+    # Primary => FunctionCall | Grouped | NAME | Number
     def parse_primary(self) -> ParseResult:
         parsed_expression = None
         error = None
