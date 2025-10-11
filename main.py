@@ -263,7 +263,7 @@ class Tokenizer:
 # Context-Free Grammar
 # Program => ( ( Statement | FunctionDefinition ) END_OF_LINE )*
 # Statement  => ( NAME '=' )? Expression
-# FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
+# FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
 # Exponential => Unary ( '**' Unary )*
@@ -377,7 +377,7 @@ class Statement(ExpressionAST):
         )
 
 
-# FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
+# FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
 class FunctionDefinition(ExpressionAST):
     def __init__(
         self, name: Token, parameters: list[Token], body: ExpressionAST
@@ -759,7 +759,7 @@ class Parser:
 
     # Program => ( ( Statement | FunctionDefinition ) END_OF_LINE )*
     # Statement  => ( NAME '=' )? Expression
-    # FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
+    # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
     # Expression => Term ( ( '+' | '-' ) Term )*
     def __next__(self):
         if self.current:
@@ -821,7 +821,7 @@ class Parser:
             parsed_expression = None
         return ParseResult(parsed_expression, error)
 
-    # FunctionDefinition => 'fn' NAME '(' ( NAME ',' )* ')' '=' Expression
+    # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
     def parse_function_definition(self) -> ParseResult:
         self.read_next_token()  # skip keyword fn
         if not (function_name := self.consume_if(TokenType.NAME)):
