@@ -248,7 +248,8 @@ class Tokenizer:
 
 
 # Context-Free Grammar
-# Program => ( ( Assignment | FunctionDefinition ) END_OF_LINE )*
+# Program => ( Statement END_OF_LINE )*
+# Statement => Assignment | FunctionDefinition
 # Assignment => ( NAME '=' )? Expression
 # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
 # Expression => Term ( ( '+' | '-' ) Term )*
@@ -573,8 +574,8 @@ class NameLookupError(Exception):
 
 # Name => NAME
 class Name(Primary):
-    def __init__(self, name_token: Token):
-        self.name: Token = name_token
+    def __init__(self, name: Token):
+        self.name: Token = name
 
     # Name => NAME
     @override
@@ -599,8 +600,8 @@ class Name(Primary):
 
 # Number => INTEGER | FLOAT
 class Number(Primary):
-    def __init__(self, number_token: Token):
-        self.number: Token = number_token
+    def __init__(self, number: Token):
+        self.number: Token = number
 
     @override
     def evaluate(self):
@@ -640,9 +641,9 @@ class Grouped(Primary):
 
 class InvalidFunctionCallError(Exception):
     def __init__(
-            self,
-            function_name_token: Token,
-            exception_error_message: str
+        self,
+        function_name_token: Token,
+        exception_error_message: str
     ):
         self.function_name_token: Token = function_name_token
         self.error = exception_error_message
@@ -744,18 +745,10 @@ class Parser:
     def __iter__(self):
         return self
 
-    # Program => ( ( Assignment | FunctionDefinition ) END_OF_LINE )*
-    # Assignment => ( NAME '=' )? Expression
-    # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
-    # Expression => Term ( ( '+' | '-' ) Term )*
+    # Program => ( Statement END_OF_LINE )*
     def __next__(self):
         if self.current:
-            match self.current.ttype:
-                case TokenType.KEYWORD_FN:
-                    result = self.parse_function_definition()
-                case _:
-                    result = self.parse_statement()
-            parsed_expression, error = result
+            parsed_expression, error = self.parse_statement()
             if parsed_expression:
                 if error:
                     raise Exception(
@@ -787,74 +780,35 @@ class Parser:
             # no more tokens to parse, stop iteration
             raise StopIteration
 
+    # Statement => Assignment | FunctionDefinition
     # Assignment => ( NAME '=' )? Expression
+    # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
     def parse_statement(self) -> ParseResult:
         parsed_expression, error = self.parse_expression()
-        if not error:
-            if (
-                isinstance(parsed_expression, Name) and
-                self.consume_if(TokenType.EQUAL)
-            ):
-                name = parsed_expression.name
-                parsed_expression, error = self.parse_expression()
-                if not error:
-                    parsed_expression = Assignment(
-                        name_token=name,
-                        expression=parsed_expression
-                    )
-                else:
-                    parsed_expression = None
-        else:
-            parsed_expression = None
-        return ParseResult(parsed_expression, error)
-
-    # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
-    def parse_function_definition(self) -> ParseResult:
-        self.read_next_token()  # skip keyword fn
-        if not (function_name := self.consume_if(TokenType.NAME)):
-            # Syntax error, expected function name
-            parsed_expression = None
-            error = f'Error in line {function_name.line+1}: '
-            error += 'Expected function name after keyword fn\n'
-            current_line = self.get_token_line(function_name)
-            error += current_line[:function_name.col+1]
-            error += ' ' + current_line[function_name.col+1:]
-            error += (' ' * (function_name.col+1)) + '^'
-            return ParseResult(parsed_expression, error)
-        if not (parenthesis := self.consume_if(TokenType.LEFT_PARENTHESIS)):
-            # Syntax error, expected ( after function name
-            parsed_expression = None
-            error = f'Error in line {parenthesis.line+1}: '
-            error += 'Expected ( after function name\n'
-            current_line = self.get_token_line(parenthesis)
-            error += current_line[:parenthesis.col+1]
-            error += ' ' + current_line[parenthesis.col+1:]
-            error += (' ' * (parenthesis.col+1)) + '^'
-            return ParseResult(parsed_expression, error)
-        parameters: list[Token] = []
-        while parameter := self.consume_if(TokenType.NAME):
-            parameters.append(parameter)
-            self.consume_if(TokenType.COMMA)
-        if not (parenthesis := self.consume_if(TokenType.RIGHT_PARENTHESIS)):
-            # Syntax error, expected ) after parameters list
-            parsed_expression = None
-            error = f'Error in line {parenthesis.line+1}: '
-            error += 'Expected ) after parameters list\n'
-            current_line = self.get_token_line(parenthesis)
-            error += current_line[:parenthesis.col+1]
-            error += ' ' + current_line[parenthesis.col+1:]
-            error += (' ' * (parenthesis.col+1)) + '^'
-            return ParseResult(parsed_expression, error)
-        self.read_next_token()  # skip =
-        parsed_expression, error = self.parse_expression()
-        if error:
-            parsed_expression = None
-        else:
-            parsed_expression = FunctionDefinition(
-                function_name,
-                parameters,
-                parsed_expression
-            )
+        if not error and self.consume_if(TokenType.EQUAL):
+            match parsed_expression:
+                case Name(name=var_token):
+                    parsed_expression, error = self.parse_expression()
+                    if error:
+                        parsed_expression = None
+                    else:
+                        parsed_expression = Assignment(
+                            name_token=var_token,
+                            expression=parsed_expression
+                        )
+                case FunctionCall(
+                    function_name=name_token,
+                    arguments=names
+                ) if all(type(n) is Name for n in names):
+                    parsed_expression, error = self.parse_expression()
+                    if error:
+                        parsed_expression = None
+                    else:
+                        parsed_expression = FunctionDefinition(
+                            name=name_token,
+                            parameters=[n.name for n in names],
+                            body=parsed_expression
+                        )
         return ParseResult(parsed_expression, error)
 
     # Expression => Term ( ( '+' | '-' ) Term )*
@@ -972,11 +926,11 @@ class Parser:
         parsed_expression = None
         error = None
         if self.check(TokenType.INTEGER, TokenType.FLOAT):
-            parsed_expression = Number(number_token=self.consume())
+            parsed_expression = Number(number=self.consume())
         elif self.check(TokenType.NAME):
             name = self.consume()
             if not self.check(TokenType.LEFT_PARENTHESIS):
-                parsed_expression = Name(name_token=name)
+                parsed_expression = Name(name=name)
             else:
                 parsed_expression, error = (
                     self.parse_function_call(function_name=name)
