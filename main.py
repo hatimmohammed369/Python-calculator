@@ -311,7 +311,7 @@ OPERATORS_STRINGS = {
 }
 
 
-class ExpressionAST(ABC):
+class TreenodeAST(ABC):
     @abstractmethod
     def evaluate(self):
         pass
@@ -331,10 +331,10 @@ class RedefiningConstantError(Exception):
 
 
 # Assignment => ( NAME '=' )? Expression
-class Assignment(ExpressionAST):
-    def __init__(self, name_token: Token, expression: ExpressionAST):
+class Assignment(TreenodeAST):
+    def __init__(self, name_token: Token, expression: TreenodeAST):
         self.name_token: Token = name_token
-        self.expression: ExpressionAST = expression
+        self.expression: TreenodeAST = expression
 
     # Assignment => ( NAME '=' )? Expression
     @override
@@ -365,13 +365,13 @@ class Assignment(ExpressionAST):
 
 
 # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
-class FunctionDefinition(ExpressionAST):
+class FunctionDefinition(TreenodeAST):
     def __init__(
-        self, name: Token, parameters: list[Token], body: ExpressionAST
+        self, name: Token, parameters: list[Token], body: TreenodeAST
     ):
         self.name: Token = name
         self.parameters: list[Token] = parameters
-        self.body: ExpressionAST = body
+        self.body: TreenodeAST = body
 
     @override
     def evaluate(self):
@@ -397,13 +397,13 @@ class FunctionDefinition(ExpressionAST):
 
 
 # Expression => Term ( ( '+' | '-' ) Term )*
-class Expression(ExpressionAST):
+class Expression(TreenodeAST):
     def __init__(
         self,
-        terms: list[ExpressionAST],
+        terms: list[TreenodeAST],
         operators: list[TokenType]
     ):
-        self.terms: list[ExpressionAST] = terms
+        self.terms: list[TreenodeAST] = terms
         self.operators: list[TokenType] = operators
 
     # Expression => Term ( ( '+' | '-' ) Term )*
@@ -446,13 +446,13 @@ class ZeroModulusError(Exception):
 
 
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
-class Term(ExpressionAST):
+class Term(TreenodeAST):
     def __init__(
         self,
-        exponentials: list[ExpressionAST],
+        exponentials: list[TreenodeAST],
         operators: list[Token]
     ):
-        self.exponentials: list[ExpressionAST] = exponentials
+        self.exponentials: list[TreenodeAST] = exponentials
         self.operators: list[Token] = operators
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
@@ -502,9 +502,9 @@ class Term(ExpressionAST):
 
 
 # Exponential => Unary ( '**' Unary )*
-class Exponential(ExpressionAST):
-    def __init__(self, unaries: list[ExpressionAST]):
-        self.unaries: list[ExpressionAST] = unaries
+class Exponential(TreenodeAST):
+    def __init__(self, unaries: list[TreenodeAST]):
+        self.unaries: list[TreenodeAST] = unaries
 
     # Exponential => Unary ( '**' Unary )*
     @override
@@ -529,10 +529,10 @@ class Exponential(ExpressionAST):
 
 
 # Unary => ( '-' )? Primary
-class Unary(ExpressionAST):
-    def __init__(self, sign_token: Token, expression: ExpressionAST):
+class Unary(TreenodeAST):
+    def __init__(self, sign_token: Token, expression: TreenodeAST):
         self.sign_token: Token = sign_token
-        self.expression: ExpressionAST = expression
+        self.expression: TreenodeAST = expression
 
     # Unary => ( '-' )? Primary
     @override
@@ -552,7 +552,7 @@ class Unary(ExpressionAST):
 
 
 # Primary => FunctionCall | Grouped | NAME | Number
-class Primary(ExpressionAST):
+class Primary(TreenodeAST):
     @abstractmethod
     def evaluate(self):
         pass
@@ -621,8 +621,8 @@ class Number(Primary):
 
 # Grouped => '(' Expression ')'
 class Grouped(Primary):
-    def __init__(self, expression: ExpressionAST):
-        self.expression: ExpressionAST = expression
+    def __init__(self, expression: TreenodeAST):
+        self.expression: TreenodeAST = expression
 
     # Grouped => '(' Expression ')'
     @override
@@ -650,9 +650,9 @@ class InvalidFunctionCallError(Exception):
 
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
 class FunctionCall(Primary):
-    def __init__(self, function_name: Token, arguments: list[ExpressionAST]):
+    def __init__(self, function_name: Token, arguments: list[TreenodeAST]):
         self.function_name: Token = function_name
-        self.arguments: list[ExpressionAST] = arguments
+        self.arguments: list[TreenodeAST] = arguments
 
     # FunctionCall => NAME '(' ( Expression ',' )* ')'
     @override
@@ -698,7 +698,7 @@ class FunctionCall(Primary):
 
 @dataclass(init=True, repr=True, frozen=True)
 class ParseResult:
-    parsed_expression: ExpressionAST
+    parsed_expression: TreenodeAST
     error: str
 
     def __iter__(self):
@@ -861,7 +861,7 @@ class Parser:
     def parse_expression(self) -> ParseResult:
         parsed_expression, error = self.parse_term()
         if parsed_expression:
-            terms: list[ExpressionAST] = [parsed_expression]
+            terms: list[TreenodeAST] = [parsed_expression]
             operators: list[TokenType] = []
             while not error and self.check(TokenType.PLUS, TokenType.MINUS):
                 operator = self.consume()  # Get operator
@@ -891,7 +891,7 @@ class Parser:
     def parse_term(self) -> ParseResult:
         parsed_expression, error = self.parse_exponential()
         if parsed_expression:
-            exponentials: list[ExpressionAST] = [parsed_expression]
+            exponentials: list[TreenodeAST] = [parsed_expression]
             operators: list[Token] = []
             while not error and self.check(
                 TokenType.STAR, TokenType.SLASH,
@@ -924,7 +924,7 @@ class Parser:
     def parse_exponential(self) -> ParseResult:
         parsed_expression, error = self.parse_unary()
         if parsed_expression:
-            items: list[ExpressionAST] = [parsed_expression]
+            items: list[TreenodeAST] = [parsed_expression]
             while not error and self.check(TokenType.EXPONENT):
                 operator = self.consume()
                 parsed_expression, error = self.parse_unary()
