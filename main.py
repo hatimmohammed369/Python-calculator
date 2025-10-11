@@ -28,7 +28,6 @@ class TokenType(Enum):
     COMMA = 12
     DOUBLE_SLASH = 13
     PERCENT = 14
-    KEYWORD_FN = 15
 
 
 class Token:
@@ -148,18 +147,6 @@ class Tokenizer:
                             line=self.line,
                             col=self.col
                         )
-                    elif (
-                        current_line[self.col:self.col+2] == 'fn' and
-                        self.col+2 < len(current_line) and
-                        not current_line[self.col+2].isalnum() and
-                        not current_line[self.col+2] == '_'
-                    ):
-                        read_token = Token(
-                            ttype=TokenType.KEYWORD_FN,
-                            value='fn',
-                            line=self.line,
-                            col=self.col
-                        )
                     elif name := NAMES_PATTERN.match(current_line, self.col):
                         read_token = Token(
                             ttype=TokenType.NAME,
@@ -261,8 +248,8 @@ class Tokenizer:
 
 
 # Context-Free Grammar
-# Program => ( ( Statement | FunctionDefinition ) END_OF_LINE )*
-# Statement  => ( NAME '=' )? Expression
+# Program => ( ( Assignment | FunctionDefinition ) END_OF_LINE )*
+# Assignment => ( NAME '=' )? Expression
 # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
 # Expression => Term ( ( '+' | '-' ) Term )*
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
@@ -343,13 +330,13 @@ class RedefiningConstantError(Exception):
         self.constant_token: Token = constant_token
 
 
-# Statement  => ( NAME '=' )? Expression
-class Statement(ExpressionAST):
+# Assignment => ( NAME '=' )? Expression
+class Assignment(ExpressionAST):
     def __init__(self, name_token: Token, expression: ExpressionAST):
         self.name_token: Token = name_token
         self.expression: ExpressionAST = expression
 
-    # Statement  => ( NAME '=' )? Expression
+    # Assignment => ( NAME '=' )? Expression
     @override
     def evaluate(self):
         value = self.expression.evaluate()
@@ -372,7 +359,7 @@ class Statement(ExpressionAST):
     @override
     def __repr__(self) -> str:
         return (
-            f'Statement(name_token={repr(self.name_token)}, ' +
+            f'Assignment(name_token={repr(self.name_token)}, ' +
             f'expression={repr(self.expression)})'
         )
 
@@ -757,8 +744,8 @@ class Parser:
     def __iter__(self):
         return self
 
-    # Program => ( ( Statement | FunctionDefinition ) END_OF_LINE )*
-    # Statement  => ( NAME '=' )? Expression
+    # Program => ( ( Assignment | FunctionDefinition ) END_OF_LINE )*
+    # Assignment => ( NAME '=' )? Expression
     # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
     # Expression => Term ( ( '+' | '-' ) Term )*
     def __next__(self):
@@ -800,7 +787,7 @@ class Parser:
             # no more tokens to parse, stop iteration
             raise StopIteration
 
-    # Statement  => ( NAME '=' )? Expression
+    # Assignment => ( NAME '=' )? Expression
     def parse_statement(self) -> ParseResult:
         parsed_expression, error = self.parse_expression()
         if not error:
@@ -811,7 +798,7 @@ class Parser:
                 name = parsed_expression.name
                 parsed_expression, error = self.parse_expression()
                 if not error:
-                    parsed_expression = Statement(
+                    parsed_expression = Assignment(
                         name_token=name,
                         expression=parsed_expression
                     )
