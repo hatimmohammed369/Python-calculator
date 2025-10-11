@@ -767,7 +767,6 @@ class Parser:
                 case _:
                     result = self.parse_statement()
             parsed_expression, error = result
-            del result
             if parsed_expression:
                 if error:
                     raise Exception(
@@ -777,25 +776,24 @@ class Parser:
                     )
                 else:
                     # Parsing successful, no errors
-                    if self.current and not self.check(TokenType.END_OF_LINE):
-                        # Invalid syntax, unexpected item
+                    if self.check(TokenType.END_OF_LINE):
+                        self.read_next_token()  # skip end of line
+                    elif self.current:
+                        # syntax error, unexpected item
                         parsed_expression = None
                         error = f'Error in line {self.current.line+1}: '
                         error += 'Invalid syntax, unexpected item\n'
                         error += self.tokenizer.input_lines[self.current.line]
                         error += (' ' * self.current.col)
                         error += ('^' * len(self.current.value))
-                    elif self.check(TokenType.END_OF_LINE):
-                        self.read_next_token()  # skip end of line
                     return ParseResult(parsed_expression, error)
+            if error:
+                # A parsing (syntax) error occurred
+                # parsed_expression is None
+                return ParseResult(parsed_expression, error)
             else:
-                if error:
-                    # A parsing (syntax) error occurred
-                    # parsed_expression is None
-                    return ParseResult(parsed_expression, error)
-                else:
-                    # no statement was parsed, stop iteration
-                    raise StopIteration
+                # no statement was parsed, stop iteration
+                raise StopIteration
         else:
             # no more tokens to parse, stop iteration
             raise StopIteration
