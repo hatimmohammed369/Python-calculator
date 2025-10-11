@@ -30,19 +30,12 @@ class TokenType(Enum):
     PERCENT = 14
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class Token:
-    def __init__(self, ttype: TokenType, value: str, line: int, col: int):
-        self.ttype: TokenType = ttype
-        self.value: str = value
-        self.line: int = line
-        self.col: int = col
-
-    def __repr__(self):
-        value = f'Token(ttype={self.ttype}, '
-        value += f"value='{self.value}', "
-        value += f"line='{self.line}', "
-        value += f'col={self.col})'
-        return value
+    ttype: TokenType
+    value: str
+    line: int
+    col: int
 
 
 NUMBERS_PATTERN = compile(r'\d+(\.\d+)?([Ee][+-]?\d+)?')
