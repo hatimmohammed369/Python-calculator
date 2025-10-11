@@ -319,16 +319,16 @@ class TreenodeAST(ABC):
         pass
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class RedefiningConstantError(Exception):
-    def __init__(self, constant_token: Token):
-        self.constant_token: Token = constant_token
+    constant_token: Token
 
 
 # Assignment => ( NAME '=' )? Expression
+@dataclass(init=True, repr=True, frozen=True)
 class AssignmentAST(TreenodeAST):
-    def __init__(self, name_token: Token, expression: TreenodeAST):
-        self.name_token: Token = name_token
-        self.expression: TreenodeAST = expression
+    name_token: Token
+    expression: TreenodeAST
 
     # Assignment => ( NAME '=' )? Expression
     @override
@@ -359,13 +359,11 @@ class AssignmentAST(TreenodeAST):
 
 
 # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
+@dataclass(init=True, repr=True, frozen=True)
 class FunctionDefinitionAST(TreenodeAST):
-    def __init__(
-        self, name: Token, parameters: list[Token], body: TreenodeAST
-    ):
-        self.name: Token = name
-        self.parameters: list[Token] = parameters
-        self.body: TreenodeAST = body
+    name: Token
+    parameters: list[Token]
+    body: TreenodeAST
 
     @override
     def evaluate(self):
@@ -391,14 +389,10 @@ class FunctionDefinitionAST(TreenodeAST):
 
 
 # Expression => Term ( ( '+' | '-' ) Term )*
+@dataclass(init=True, repr=True, frozen=True)
 class ExpressionAST(TreenodeAST):
-    def __init__(
-        self,
-        terms: list[TreenodeAST],
-        operators: list[TokenType]
-    ):
-        self.terms: list[TreenodeAST] = terms
-        self.operators: list[TokenType] = operators
+    terms: list[TreenodeAST]
+    operators: list[TokenType]
 
     # Expression => Term ( ( '+' | '-' ) Term )*
     @override
@@ -429,25 +423,21 @@ class ExpressionAST(TreenodeAST):
         return f'Expression(terms={repr(terms)}, operators={repr(operators)})'
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class DivisionByZeroError(Exception):
-    def __init__(self, operator: Token):
-        self.operator = operator
+    operator: Token
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class ZeroModulusError(Exception):
-    def __init__(self, operator: Token):
-        self.operator = operator
+    operator: Token
 
 
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
+@dataclass(init=True, repr=True, frozen=True)
 class TermAST(TreenodeAST):
-    def __init__(
-        self,
-        exponentials: list[TreenodeAST],
-        operators: list[Token]
-    ):
-        self.exponentials: list[TreenodeAST] = exponentials
-        self.operators: list[Token] = operators
+    exponentials: list[TreenodeAST]
+    operators: list[Token]
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
     @override
@@ -496,9 +486,9 @@ class TermAST(TreenodeAST):
 
 
 # Exponential => Unary ( '**' Unary )*
+@dataclass(init=True, repr=True, frozen=True)
 class ExponentialAST(TreenodeAST):
-    def __init__(self, unaries: list[TreenodeAST]):
-        self.unaries: list[TreenodeAST] = unaries
+    unaries: list[TreenodeAST]
 
     # Exponential => Unary ( '**' Unary )*
     @override
@@ -523,10 +513,10 @@ class ExponentialAST(TreenodeAST):
 
 
 # Unary => ( '-' )? Primary
+@dataclass(init=True, repr=True, frozen=True)
 class UnaryAST(TreenodeAST):
-    def __init__(self, sign_token: Token, expression: TreenodeAST):
-        self.sign_token: Token = sign_token
-        self.expression: TreenodeAST = expression
+    sign_token: Token
+    expression: TreenodeAST
 
     # Unary => ( '-' )? Primary
     @override
@@ -560,15 +550,15 @@ class PrimaryAST(TreenodeAST):
         pass
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class NameLookupError(Exception):
-    def __init__(self, name_token: Token):
-        self.name_token = name_token
+    name_token: Token
 
 
 # Name => NAME
+@dataclass(init=True, repr=True, frozen=True)
 class NameAST(PrimaryAST):
-    def __init__(self, name: Token):
-        self.name: Token = name
+    name: Token
 
     # Name => NAME
     @override
@@ -592,9 +582,9 @@ class NameAST(PrimaryAST):
 
 
 # Number => INTEGER | FLOAT
+@dataclass(init=True, repr=True, frozen=True)
 class NumberAST(PrimaryAST):
-    def __init__(self, number: Token):
-        self.number: Token = number
+    number: Token
 
     @override
     def evaluate(self):
@@ -614,9 +604,9 @@ class NumberAST(PrimaryAST):
 
 
 # Grouped => '(' Expression ')'
+@dataclass(init=True, repr=True, frozen=True)
 class GroupedAST(PrimaryAST):
-    def __init__(self, expression: TreenodeAST):
-        self.expression: TreenodeAST = expression
+    expression: TreenodeAST
 
     # Grouped => '(' Expression ')'
     @override
@@ -632,21 +622,17 @@ class GroupedAST(PrimaryAST):
         return f'Grouped(expression={repr(self.expression)})'
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class InvalidFunctionCallError(Exception):
-    def __init__(
-        self,
-        function_name_token: Token,
-        exception_error_message: str
-    ):
-        self.function_name_token: Token = function_name_token
-        self.error = exception_error_message
+    function_name_token: Token
+    error: str
 
 
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
+@dataclass(init=True, repr=True, frozen=True)
 class FunctionCallAST(PrimaryAST):
-    def __init__(self, function_name: Token, arguments: list[TreenodeAST]):
-        self.function_name: Token = function_name
-        self.arguments: list[TreenodeAST] = arguments
+    function_name: Token
+    arguments: list[TreenodeAST]
 
     # FunctionCall => NAME '(' ( Expression ',' )* ')'
     @override
