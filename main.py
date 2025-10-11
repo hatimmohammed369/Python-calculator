@@ -592,8 +592,11 @@ class Name(Primary):
     # Name => NAME
     @override
     def evaluate(self):
+        if active_function_namespace:
+            if value := get_active_namespace().get(self.name.value, None):
+                return value
         try:
-            return get_active_namespace()[self.name.value]
+            return global_namespace[self.name.value]
         except KeyError:
             raise NameLookupError(name_token=self.name)
 
