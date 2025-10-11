@@ -593,7 +593,8 @@ class Name(Primary):
     @override
     def evaluate(self):
         if active_function_namespace:
-            if value := get_active_namespace().get(self.name.value, None):
+            value = get_active_namespace().get(self.name.value, None)
+            if value is not None:
                 return value
         try:
             return global_namespace[self.name.value]
@@ -721,7 +722,8 @@ class ParseResult:
 class Parser:
     def __init__(self, input_lines: list[str]):
         self.tokenizer = Tokenizer(input_lines)
-        self.read_next_token()
+        if input_lines:
+            self.read_next_token()
 
     def read_next_token(self):
         try:
@@ -1186,13 +1188,14 @@ if args.file:
         interactive=False
     )
 else:
+    parser = Parser(input_lines=[])
+    interactive = True
     while True:
         try:
             if line := input("> "):
                 line += '\n'
-                process(
-                    parser=Parser(input_lines=[line]),
-                    interactive=True
-                )
+                parser.tokenizer.input_lines.append(line)
+                parser.read_next_token()
+                process(parser, interactive)
         except (EOFError, KeyboardInterrupt):
             exit(1)
