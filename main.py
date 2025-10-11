@@ -325,7 +325,7 @@ class RedefiningConstantError(Exception):
 
 
 # Assignment => ( NAME '=' )? Expression
-class Assignment(TreenodeAST):
+class AssignmentAST(TreenodeAST):
     def __init__(self, name_token: Token, expression: TreenodeAST):
         self.name_token: Token = name_token
         self.expression: TreenodeAST = expression
@@ -359,7 +359,7 @@ class Assignment(TreenodeAST):
 
 
 # FunctionDefinition => NAME '(' ( NAME ',' )* ')' '=' Expression
-class FunctionDefinition(TreenodeAST):
+class FunctionDefinitionAST(TreenodeAST):
     def __init__(
         self, name: Token, parameters: list[Token], body: TreenodeAST
     ):
@@ -391,7 +391,7 @@ class FunctionDefinition(TreenodeAST):
 
 
 # Expression => Term ( ( '+' | '-' ) Term )*
-class Expression(TreenodeAST):
+class ExpressionAST(TreenodeAST):
     def __init__(
         self,
         terms: list[TreenodeAST],
@@ -440,7 +440,7 @@ class ZeroModulusError(Exception):
 
 
 # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
-class Term(TreenodeAST):
+class TermAST(TreenodeAST):
     def __init__(
         self,
         exponentials: list[TreenodeAST],
@@ -496,7 +496,7 @@ class Term(TreenodeAST):
 
 
 # Exponential => Unary ( '**' Unary )*
-class Exponential(TreenodeAST):
+class ExponentialAST(TreenodeAST):
     def __init__(self, unaries: list[TreenodeAST]):
         self.unaries: list[TreenodeAST] = unaries
 
@@ -523,7 +523,7 @@ class Exponential(TreenodeAST):
 
 
 # Unary => ( '-' )? Primary
-class Unary(TreenodeAST):
+class UnaryAST(TreenodeAST):
     def __init__(self, sign_token: Token, expression: TreenodeAST):
         self.sign_token: Token = sign_token
         self.expression: TreenodeAST = expression
@@ -546,7 +546,7 @@ class Unary(TreenodeAST):
 
 
 # Primary => FunctionCall | Grouped | NAME | Number
-class Primary(TreenodeAST):
+class PrimaryAST(TreenodeAST):
     @abstractmethod
     def evaluate(self):
         pass
@@ -566,7 +566,7 @@ class NameLookupError(Exception):
 
 
 # Name => NAME
-class Name(Primary):
+class NameAST(PrimaryAST):
     def __init__(self, name: Token):
         self.name: Token = name
 
@@ -592,7 +592,7 @@ class Name(Primary):
 
 
 # Number => INTEGER | FLOAT
-class Number(Primary):
+class NumberAST(PrimaryAST):
     def __init__(self, number: Token):
         self.number: Token = number
 
@@ -614,7 +614,7 @@ class Number(Primary):
 
 
 # Grouped => '(' Expression ')'
-class Grouped(Primary):
+class GroupedAST(PrimaryAST):
     def __init__(self, expression: TreenodeAST):
         self.expression: TreenodeAST = expression
 
@@ -643,7 +643,7 @@ class InvalidFunctionCallError(Exception):
 
 
 # FunctionCall => NAME '(' ( Expression ',' )* ')'
-class FunctionCall(Primary):
+class FunctionCallAST(PrimaryAST):
     def __init__(self, function_name: Token, arguments: list[TreenodeAST]):
         self.function_name: Token = function_name
         self.arguments: list[TreenodeAST] = arguments
@@ -652,7 +652,7 @@ class FunctionCall(Primary):
     @override
     def evaluate(self):
         arguments = [argument.evaluate() for argument in self.arguments]
-        function: FunctionDefinition = (
+        function: FunctionDefinitionAST = (
             defined_functions.get(self.function_name.value, None)
         )
         if function and len(function.parameters) == len(arguments):
@@ -780,24 +780,24 @@ class Parser:
         parsed_expression, error = self.parse_expression()
         if not error and self.consume_if(TokenType.EQUAL):
             match parsed_expression:
-                case Name(name=var_token):
+                case NameAST(name=var_token):
                     parsed_expression, error = self.parse_expression()
                     if error:
                         parsed_expression = None
                     else:
-                        parsed_expression = Assignment(
+                        parsed_expression = AssignmentAST(
                             name_token=var_token,
                             expression=parsed_expression
                         )
-                case FunctionCall(
+                case FunctionCallAST(
                     function_name=name_token,
                     arguments=names
-                ) if all(type(n) is Name for n in names):
+                ) if all(type(n) is NameAST for n in names):
                     parsed_expression, error = self.parse_expression()
                     if error:
                         parsed_expression = None
                     else:
-                        parsed_expression = FunctionDefinition(
+                        parsed_expression = FunctionDefinitionAST(
                             name=name_token,
                             parameters=[n.name for n in names],
                             body=parsed_expression
@@ -831,7 +831,7 @@ class Parser:
                 if len(terms) == 1:
                     parsed_expression = terms.pop()
                 else:
-                    parsed_expression = Expression(terms, operators)
+                    parsed_expression = ExpressionAST(terms, operators)
         return ParseResult(parsed_expression, error)
 
     # Term => Exponential ( ( '*' | '/' | '//' | '%' ) Exponential )*
@@ -864,7 +864,7 @@ class Parser:
                 if len(exponentials) == 1:
                     parsed_expression = exponentials.pop()
                 else:
-                    parsed_expression = Term(exponentials, operators)
+                    parsed_expression = TermAST(exponentials, operators)
         return ParseResult(parsed_expression, error)
 
     # Exponential => Unary ( '**' Unary )*
@@ -889,7 +889,7 @@ class Parser:
                     error += ' ' + current_line[operator.col+1:]
                     error += (' ' * (operator.col+1)) + '^^'
             if not error and len(items) > 1:
-                parsed_expression = Exponential(unaries=items)
+                parsed_expression = ExponentialAST(unaries=items)
         return ParseResult(parsed_expression, error)
 
     # Unary => ( '-' )? Primary
@@ -908,7 +908,7 @@ class Parser:
                 error += current_line[sign.col:]
                 error += ' ' * sign.col + '^'
             else:
-                parsed_expression = Unary(
+                parsed_expression = UnaryAST(
                     sign_token=sign,
                     expression=parsed_expression
                 )
@@ -919,14 +919,14 @@ class Parser:
         parsed_expression = None
         error = None
         if self.check(TokenType.INTEGER, TokenType.FLOAT):
-            parsed_expression = Number(number=self.consume())
+            parsed_expression = NumberAST(number=self.consume())
         elif self.check(TokenType.NAME):
-            name = self.consume()
+            name_token = self.consume()
             if not self.check(TokenType.LEFT_PARENTHESIS):
-                parsed_expression = Name(name=name)
+                parsed_expression = NameAST(name=name_token)
             else:
                 parsed_expression, error = (
-                    self.parse_function_call(function_name=name)
+                    self.parse_function_call(function_name=name_token)
                 )
         elif self.check(TokenType.LEFT_PARENTHESIS):
             parsed_expression, error = (
@@ -956,10 +956,10 @@ class Parser:
         elif parsed_expression:
             if self.check(TokenType.RIGHT_PARENTHESIS):
                 self.read_next_token()  # skip closing )
-                if not isinstance(parsed_expression, Primary):
+                if not isinstance(parsed_expression, PrimaryAST):
                     # Do not group a primary expression
                     # (number, name, group, function call)
-                    parsed_expression = Grouped(
+                    parsed_expression = GroupedAST(
                         expression=parsed_expression
                     )
             else:
@@ -1036,7 +1036,7 @@ class Parser:
         if not error:
             if self.check(TokenType.RIGHT_PARENTHESIS):
                 self.read_next_token()  # skip closing )
-                parsed_expression = FunctionCall(
+                parsed_expression = FunctionCallAST(
                     function_name, arguments
                 )
             else:
