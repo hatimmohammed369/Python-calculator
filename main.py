@@ -667,10 +667,10 @@ class FunctionCall(Primary):
     @override
     def evaluate(self):
         arguments = [argument.evaluate() for argument in self.arguments]
-        function: FunctionDefinition = defined_functions.get(
-            self.function_name.value, None
+        function: FunctionDefinition = (
+            defined_functions.get(self.function_name.value, None)
         )
-        if function:
+        if function and len(function.parameters) == len(arguments):
             create_new_namespace()
             get_active_namespace().update({
                 paramter.value: argument
@@ -679,17 +679,18 @@ class FunctionCall(Primary):
             value = function.body.evaluate()
             destroy_active_namespace()
             return value
-        else:
-            function = getattr(math, self.function_name.value, None)
+        elif function := getattr(math, self.function_name.value, None):
             try:
                 return function(*arguments)
-            except TypeError as e:
-                raise InvalidFunctionCallError(
-                    function_name_token=self.function_name,
-                    exception_error_message=(
-                        str(e).replace('math.', 'Function ')
-                    )
-                )
+            except:
+                pass
+
+        raise InvalidFunctionCallError(
+            function_name_token=self.function_name,
+            exception_error_message=(
+                f'No such function {self.function_name.value}'
+            )
+        )
 
     @override
     def __str__(self):
